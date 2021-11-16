@@ -2,7 +2,7 @@ from numpy.lib.function_base import disp
 from .detector3d_template import Detector3DTemplate
 
 
-class SECONDNet(Detector3DTemplate):
+class PVSECONDNet(Detector3DTemplate):
     def __init__(self, model_cfg, num_class, dataset):
         super().__init__(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
         self.module_list = self.build_networks()
@@ -26,10 +26,12 @@ class SECONDNet(Detector3DTemplate):
         disp_dict = {}
 
         loss_rpn, tb_dict = self.dense_head.get_loss()
+        loss_point, tb_dict = self.point_head.get_loss(tb_dict)
         tb_dict = {
             'loss_rpn': loss_rpn.item(),
+            'loss_point': loss_point.item(),
             **tb_dict
         }
 
-        loss = loss_rpn
+        loss = loss_rpn + loss_point
         return loss, tb_dict, disp_dict

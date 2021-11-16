@@ -350,6 +350,46 @@ class KittiDataset(DatasetTemplate):
 
         return annos
 
+    def makeBEVFeature(self, points, boundry, Map_config):
+        discretization_x = Map_config["discretization_x"]
+        discretization_y = Map_config["discretization_y"]
+        Height = Map_config["BEVHeight"]
+        Width  = Map_config["BEVWidth"]
+
+        PointCloud = np.copy(points)
+        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x))
+        PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y))
+
+        indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
+        PointCloud = PointCloud[indices]
+
+        heightMap  = np.zeros((Height, Width))
+        _, indices = np.unique(PointCloud[:, 0:2], axis=0, return_index=True)
+        PointCloud_frac = PointCloud[indices]
+        # some important problem is image coordinate is (y,x), not (x,y)
+        # so here just use x as height, y as width
+        max_height = float(np.abs(boundry['maxZ'] - boundry['minZ']))
+        heightMap[np.int_(PointCloud_frac[:, 0]), np.int_(PointCloud_frac[:, 1])] = PointCloud_frac[:, 2] / max_height
+
+        # Intensity Map & DensityMap
+        intensityMap = np.zeros((Height, Width))
+        densityMap = np.zeros((Height, Width))
+
+        _, indices, counts = np.unique(PointCloud[:, 0:2], axis=0, return_index=True, return_counts=True)
+        PointCloud_top = PointCloud[indices]
+
+        normalizedCounts = np.minimum(1.0, np.log(counts + 1) / np.log(64))
+
+        intensityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = PointCloud_top[:, 3]
+        densityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = normalizedCounts
+
+        RGB_Map = np.zeros((3, Height - 1, Width - 1))
+        RGB_Map[2, :, :] = densityMap[:Height - 1, :Width - 1]  # r_map
+        RGB_Map[1, :, :] = heightMap[:Height - 1, :Width - 1]  # g_map
+        RGB_Map[0, :, :] = intensityMap[:Height - 1, :Width - 1]  # b_map
+        return RGB_Map
+
+
     def evaluation(self, det_annos, class_names, **kwargs):
         if 'annos' not in self.kitti_infos[0].keys():
             return None, {}
@@ -411,6 +451,27 @@ class KittiDataset(DatasetTemplate):
                 fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
                 points = points[fov_flag]
             input_dict['points'] = points
+
+        if "bev" in get_item_list:
+            points = self.get_lidar(sample_idx)
+            if self.dataset_cfg.FOV_POINTS_ONLY:
+                pts_rect = calib.lidar_to_rect(points[:, 0:3])
+                fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
+                points = points[fov_flag]
+            boundry = {}
+            point_range = self.dataset_cfg.POINT_CLOUD_RANGE
+            voxel_step  = self.dataset_cfg.DATA_PROCESSOR.VOXEL_SIZE
+            MAP_config  = self.dataset_cfg.BEV_CONFIG
+            boundry["minX"] = point_range[1]
+            boundry["minY"] = point_range[0]
+            boundry["minZ"] = point_range[2]
+            boundry["maxX"] = point_range[4]
+            boundry["maxY"] = point_range[3]
+            boundry["maxZ"] = point_range[5]
+            boundry["step_x"] = voxel_step[1]
+            boundry["step_y"] = voxel_step[0]
+            rgb_map = self.makeBEVFeature(points, boundry, MAP_config)
+            input_dict['bev'] = rgb_map
 
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)

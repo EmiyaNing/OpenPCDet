@@ -20,7 +20,10 @@ def get_git_commit_number():
 def make_cuda_ext(name, module, sources):
     cuda_ext = CUDAExtension(
         name='%s.%s' % (module, name),
-        sources=[os.path.join(*module.split('.'), src) for src in sources]
+        sources=[os.path.join(*module.split('.'), src) for src in sources],
+        include_dirs=['/usr/local/cuda-11.0/include'],
+        library_dirs=['/usr/local/cuda--11.0/lib64'],
+        extra_compile_args={'cxx':['-g'], 'nvcc':['-O2']}
     )
     return cuda_ext
 

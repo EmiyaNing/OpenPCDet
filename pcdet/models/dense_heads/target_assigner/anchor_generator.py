@@ -45,9 +45,13 @@ class AnchorGenerator(object):
             x_shifts, y_shifts, z_shifts = torch.meshgrid([
                 x_shifts, y_shifts, z_shifts
             ])  # [x_grid, y_grid, z_grid]
+            # Now the x_shifts should be [grid_size, gride_size, gride_size]
             anchors = torch.stack((x_shifts, y_shifts, z_shifts), dim=-1)  # [x, y, z, 3]
+            # So the anchors shape should be [grid_size, gride_size, gride_size, 3]
+            # Each grid should locate 3 anchor, so we repeat the anchors to [grid_size, grid_size, grid_size, 3, 3]
             anchors = anchors[:, :, :, None, :].repeat(1, 1, 1, anchor_size.shape[0], 1)
             anchor_size = anchor_size.view(1, 1, 1, -1, 3).repeat([*anchors.shape[0:3], 1, 1])
+            # Each anchor should contain the x, y, z, w, h, l so the code use the concate function
             anchors = torch.cat((anchors, anchor_size), dim=-1)
             anchors = anchors[:, :, :, :, None, :].repeat(1, 1, 1, 1, num_anchor_rotation, 1)
             anchor_rotation = anchor_rotation.view(1, 1, 1, 1, -1, 1).repeat([*anchors.shape[0:3], num_anchor_size, 1, 1])
@@ -66,7 +70,7 @@ if __name__ == '__main__':
         EasyDict({
             'anchor_sizes': [[2.1, 4.7, 1.7], [0.86, 0.91, 1.73], [0.84, 1.78, 1.78]],
             'anchor_rotations': [0, 1.57],
-            'anchor_heights': [0, 0.5]
+            'anchor_bottom_heights': [0, 0.5],
         })
     ]
 

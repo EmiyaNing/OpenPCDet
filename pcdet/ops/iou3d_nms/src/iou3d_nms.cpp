@@ -3,7 +3,7 @@
 Written by Shaoshuai Shi
 All Rights Reserved 2019-2020.
 */
-
+#include <iostream>
 #include <torch/serialize/tensor.h>
 #include <torch/extension.h>
 #include <vector>
@@ -50,18 +50,15 @@ int boxes_overlap_bev_gpu(at::Tensor boxes_a, at::Tensor boxes_b, at::Tensor ans
     // params boxes_a: (N, 7) [x, y, z, dx, dy, dz, heading]
     // params boxes_b: (M, 7) [x, y, z, dx, dy, dz, heading]
     // params ans_overlap: (N, M)
-
     CHECK_INPUT(boxes_a);
     CHECK_INPUT(boxes_b);
     CHECK_INPUT(ans_overlap);
-
     int num_a = boxes_a.size(0);
     int num_b = boxes_b.size(0);
 
     const float * boxes_a_data = boxes_a.data<float>();
     const float * boxes_b_data = boxes_b.data<float>();
     float * ans_overlap_data = ans_overlap.data<float>();
-
     boxesoverlapLauncher(num_a, boxes_a_data, num_b, boxes_b_data, ans_overlap_data);
 
     return 1;
