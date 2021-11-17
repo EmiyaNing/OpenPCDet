@@ -13,7 +13,14 @@ INFO_PATH: {
     'test': [kitti_infos_val.pkl],
 }
 
-GET_ITEM_LIST: ["points"]
+BEV_CONFIG: {
+  'BEVHeight': 352,
+  'BEVWidth': 400,
+  'discretization_x': 0.2,
+  'discretization_y': 0.2,
+}
+
+GET_ITEM_LIST: ["points", "bev"]
 FOV_POINTS_ONLY: True
 
 DATA_AUGMENTOR:

@@ -7,6 +7,7 @@
 6. Multi positive used in yolox and fcos
 7. Add a BEV feature input branch for BEVRPNbackbone
 8. Add a Deeplab style dilate conv 3d block to extend the receptive field
+9. Add a coordinate 3d attention for this model
 
 ### Hard rank
 1 *
@@ -16,9 +17,11 @@
 5 ***
 6 ****
 7 **
+8 **
+9 ***
 
 ### Implement order
-1 -> 2 -> 5 -> 7 -> 3 -> 6 -> 4 -> 8
+1 -> 2 -> 5 -> 7 -> 9 -> 3 -> 6 -> 4 -> 8
 3 is the task's pre_task
 
 ### 2021/11/14 Works

@@ -20,7 +20,7 @@ def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stri
     m = spconv.SparseSequential(
         conv,
         norm_fn(out_channels),
-        nn.ReLU(),
+        nn.SiLU(inplace=True),
     )
 
     return m
@@ -112,7 +112,7 @@ class VoxelBackBone8x(nn.Module):
             spconv.SparseConv3d(64, 128, (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
                                 bias=False, indice_key='spconv_down2'),
             norm_fn(128),
-            nn.ReLU(),
+            nn.SiLU(inplace=True),
         )
         self.num_point_features = 128
         self.backbone_channels = {
@@ -190,7 +190,7 @@ class VoxelResBackBone8x(nn.Module):
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
             norm_fn(16),
-            nn.ReLU(),
+            nn.SiLU(inplace=True),
         )
         block = post_act_block
 
@@ -227,7 +227,7 @@ class VoxelResBackBone8x(nn.Module):
             spconv.SparseConv3d(128, 128, (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
                                 bias=False, indice_key='spconv_down2'),
             norm_fn(128),
-            nn.ReLU(),
+            nn.SiLU(inplace=True),
         )
         self.num_point_features = 128
         self.backbone_channels = {
@@ -281,3 +281,4 @@ class VoxelResBackBone8x(nn.Module):
         })
 
         return batch_dict
+

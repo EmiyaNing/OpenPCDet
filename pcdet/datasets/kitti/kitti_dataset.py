@@ -350,7 +350,26 @@ class KittiDataset(DatasetTemplate):
 
         return annos
 
+    def removePoints(self, PointCloud, BoundaryCond):
+        # Boundary condition
+        minX = BoundaryCond['minX']
+        maxX = BoundaryCond['maxX']
+        minY = BoundaryCond['minY']
+        maxY = BoundaryCond['maxY']
+        minZ = BoundaryCond['minZ']
+        maxZ = BoundaryCond['maxZ']
+
+        # Remove the point out of range x,y,z
+        mask = np.where((PointCloud[:, 0] >= minX) & (PointCloud[:, 0] <= maxX) & (PointCloud[:, 1] >= minY) & (
+                PointCloud[:, 1] <= maxY) & (PointCloud[:, 2] >= minZ) & (PointCloud[:, 2] <= maxZ))
+        PointCloud = PointCloud[mask]
+
+        PointCloud[:, 2] = PointCloud[:, 2] - minZ
+
+        return PointCloud
+
     def makeBEVFeature(self, points, boundry, Map_config):
+        points = self.removePoints(points, boundry)
         discretization_x = Map_config["discretization_x"]
         discretization_y = Map_config["discretization_y"]
         Height = Map_config["BEVHeight"]
@@ -383,10 +402,10 @@ class KittiDataset(DatasetTemplate):
         intensityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = PointCloud_top[:, 3]
         densityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = normalizedCounts
 
-        RGB_Map = np.zeros((3, Height - 1, Width - 1))
-        RGB_Map[2, :, :] = densityMap[:Height - 1, :Width - 1]  # r_map
-        RGB_Map[1, :, :] = heightMap[:Height - 1, :Width - 1]  # g_map
-        RGB_Map[0, :, :] = intensityMap[:Height - 1, :Width - 1]  # b_map
+        RGB_Map = np.zeros((3, Height, Width))
+        RGB_Map[2, :, :] = densityMap[:Height, :Width]  # r_map
+        RGB_Map[1, :, :] = heightMap[:Height, :Width]  # g_map
+        RGB_Map[0, :, :] = intensityMap[:Height, :Width]  # b_map
         return RGB_Map
 
 
@@ -453,14 +472,9 @@ class KittiDataset(DatasetTemplate):
             input_dict['points'] = points
 
         if "bev" in get_item_list:
-            points = self.get_lidar(sample_idx)
-            if self.dataset_cfg.FOV_POINTS_ONLY:
-                pts_rect = calib.lidar_to_rect(points[:, 0:3])
-                fov_flag = self.get_fov_flag(pts_rect, img_shape, calib)
-                points = points[fov_flag]
             boundry = {}
             point_range = self.dataset_cfg.POINT_CLOUD_RANGE
-            voxel_step  = self.dataset_cfg.DATA_PROCESSOR.VOXEL_SIZE
+            voxel_step  = self.dataset_cfg.DATA_PROCESSOR[2].VOXEL_SIZE
             MAP_config  = self.dataset_cfg.BEV_CONFIG
             boundry["minX"] = point_range[1]
             boundry["minY"] = point_range[0]
