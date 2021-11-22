@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from .network_blocks import Focus, SPPBottleneck
 
 class DropPath(nn.Module):
     """DropPath class"""
@@ -237,21 +238,23 @@ class TransBEVBackbone(nn.Module):
 
 class TransSSFA(nn.Module):
     '''
-        Now there are all bugs.....
+        CIA-SSD version 2d backbone
     '''
     def __init__(self,  model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
-        
         dim = input_channels
-        out_dim   = dim
+        out_dim    = dim // 2
+        self.focus = Focus(3, dim)
+        self.spp   = SPPBottleneck(dim, dim)
+        self.compress = nn.Conv2d(dim * 2, dim, 1, 1)
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
         self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
         self.bottom_up_block_0 = nn.Sequential(
             nn.ZeroPad2d(1),
-            nn.Conv2d(256, 128, 3, stride=1, bias=False),
+            nn.Conv2d(128, 128, 3, stride=1, bias=False),
             nn.BatchNorm(128),
             nn.ReLU(),
 
@@ -331,6 +334,11 @@ class TransSSFA(nn.Module):
 
     def forward(self, data_dict):
         x = data_dict["spatial_features_2d"]
+        bev = data_dict["bev"]
+        bev_pred = self.spp(self.focus(bev))
+        x   = torch.cat([x, bev_pred], 1)
+        x   = self.compress(x)
+        x   = self.transformer(x)
         x_0 = self.bottom_up_block_0(x)
         x_1 = self.bottom_up_block_1(x_0)
         x_trans_0 = self.trans_0(x_0)
@@ -344,5 +352,61 @@ class TransSSFA(nn.Module):
         x_weight_1 = self.w_1(x_output_1)
         x_weight = torch.softmax(torch.cat([x_weight_0, x_weight_1], dim=1), dim=1)
         x_output = x_output_0 * x_weight[:, 0:1, :, :] + x_output_1 * x_weight[:, 1:, :, :]
+        data_dict["spatial_features_2d"] = x_output.contiguous()
 
-        return x_output.contiguous()
+        return data_dict
+
+
+class TransBEVNet(nn.Module):
+    '''
+        SA-SSD Version 2d backbone
+    '''
+    def __init__(self, model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        num_filters = self.model_cfg.NUM_FILTERS
+        dim = input_channels
+        out_dim   = dim
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.fcous    = Focus(3, dim//2)
+        self.spp      = SPPBottleneck(dim//2, out_dim)
+        self.compress = nn.Conv2d(dim + out_dim, out_dim, 1, 1)
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.layers = nn.Sequential(
+            nn.Conv2d(input_channels, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 3, 1, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(num_filters, num_filters, 1),
+            nn.BatchNorm2d(num_features),
+            nn.SiLU(inplace=True)
+        )
+
+    def forward(self, data_dict):
+        origin_bev = data_dict["bev"]
+        features   = data_dict["spatial_features_2d"]
+        origin_for = self.spp(self.fcous(origin_bev))
+        origin_for = origin_for.permute(0, 1, 3, 2)
+        concat_fea = torch.cat([features, origin_for], 1)
+        x = self.compress(concat_fea)
+        trans_out  = self.transformer(x)
+        result     = self.layers(trans_out)
+        data_dict["spatial_features_2d"] = result
+        return data_dict
+
