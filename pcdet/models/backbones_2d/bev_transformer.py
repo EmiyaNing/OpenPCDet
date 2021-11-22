@@ -244,101 +244,105 @@ class TransSSFA(nn.Module):
         super().__init__()
         self.model_cfg = model_cfg
         dim = input_channels
-        out_dim    = dim // 2
+        out_dim    = dim
         self.focus = Focus(3, dim)
         self.spp   = SPPBottleneck(dim, dim)
         self.compress = nn.Conv2d(dim * 2, dim, 1, 1)
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
+        self.num_bev_features = 128
         self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.project     = nn.Conv2d(out_dim, out_dim // 2, 1)
         self.bottom_up_block_0 = nn.Sequential(
             nn.ZeroPad2d(1),
             nn.Conv2d(128, 128, 3, stride=1, bias=False),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.bottom_up_block_1 = nn.Sequential(
             # [200, 176] -> [100, 88]
-            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
 
             nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(256),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
 
             nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(256),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
 
         )
 
         self.trans_0 = nn.Sequential(
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.trans_1 = nn.Sequential(
             nn.Conv2d(in_channels=256, out_channels=256, kernel_size=1, stride=1, padding=0, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
         )
 
         self.deconv_block_0 = nn.Sequential(
             nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.deconv_block_1 = nn.Sequential(
             nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.conv_0 = nn.Sequential(
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.w_0 = nn.Sequential(
             nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(1),
         )
 
         self.conv_1 = nn.Sequential(
             nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
         )
 
         self.w_1 = nn.Sequential(
             nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
-            nn.BatchNorm(128),
+            nn.BatchNorm2d(1),
         )
 
 
 
 
     def forward(self, data_dict):
-        x = data_dict["spatial_features_2d"]
+        x = data_dict["spatial_features"]
         bev = data_dict["bev"]
         bev_pred = self.spp(self.focus(bev))
+        bev_pred = bev_pred.permute(0, 1, 3, 2)
         x   = torch.cat([x, bev_pred], 1)
         x   = self.compress(x)
         x   = self.transformer(x)
+        x   = self.project(x)
         x_0 = self.bottom_up_block_0(x)
         x_1 = self.bottom_up_block_1(x_0)
         x_trans_0 = self.trans_0(x_0)
@@ -370,37 +374,38 @@ class TransBEVNet(nn.Module):
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
+        self.num_filters = 256
         self.fcous    = Focus(3, dim//2)
         self.spp      = SPPBottleneck(dim//2, out_dim)
         self.compress = nn.Conv2d(dim + out_dim, out_dim, 1, 1)
         self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
         self.layers = nn.Sequential(
             nn.Conv2d(input_channels, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 3, 1, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True),
             nn.Conv2d(num_filters, num_filters, 1),
-            nn.BatchNorm2d(num_features),
+            nn.BatchNorm2d(num_filters),
             nn.SiLU(inplace=True)
         )
 
     def forward(self, data_dict):
         origin_bev = data_dict["bev"]
-        features   = data_dict["spatial_features_2d"]
+        features   = data_dict["spatial_features"]
         origin_for = self.spp(self.fcous(origin_bev))
         origin_for = origin_for.permute(0, 1, 3, 2)
         concat_fea = torch.cat([features, origin_for], 1)

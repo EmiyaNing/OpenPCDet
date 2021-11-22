@@ -40,7 +40,7 @@ class CSPDarknet(nn.Module):
         features = data_dict['spatial_features']
         x = torch.cat([features, x], 1)
         x = self.compress(x)
-        data_dict["spatial_features"] = x
+        data_dict["spatial_features_2d"] = x
         data_dict = self.rpn_backbone(data_dict)
 
         return data_dict
