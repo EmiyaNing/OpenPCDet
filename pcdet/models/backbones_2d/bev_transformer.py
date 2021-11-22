@@ -47,6 +47,26 @@ class Mlp(nn.Module):
         x = self.drop(self.fc2(x))
         return x
 
+class PatchEmbedding(nn.Module):
+    def __init__(self, in_channels, out_channels, image_size, dropout = 0.):
+        super().__init__()
+        self.patch_embedding = nn.Conv2d(in_channels, out_channels, 2, 2)
+        position = torch.randn([1, out_channels, image_size[0] // 2, image_size[1] // 2], requires_grad=True)
+        cls      = torch.zeros([1, out_channels, image_size[0] // 2, image_size[1] // 2], requires_grad=True)
+        self.position_embedding = nn.Parameter(position)
+        self.cls_token          = nn.Parameter(cls)
+        self.dropout            = nn.Dropout(dropout)
+
+    def forward(self, x):
+        cls_token = self.cls_token.expand(x.shape[0], -1, -1, -1)
+        x = self.patch_embedding(x)
+        x = torch.cat([cls_token, x], 1)
+        embeddings = x + self.position_embedding
+        embeddings = self.dropout(embeddings)
+        return embeddings
+
+
+
 class Attention(nn.Module):
     def __init__(self, dim, num_heads, attn_drop, qk_scale=None):
         super().__init__()
@@ -214,3 +234,115 @@ class TransBEVBackbone(nn.Module):
         data_dict['spatial_features_2d'] = x
 
         return data_dict
+
+class TransSSFA(nn.Module):
+    '''
+        Now there are all bugs.....
+    '''
+    def __init__(self,  model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        
+        dim = input_channels
+        out_dim   = dim
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.bottom_up_block_0 = nn.Sequential(
+            nn.ZeroPad2d(1),
+            nn.Conv2d(256, 128, 3, stride=1, bias=False),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.bottom_up_block_1 = nn.Sequential(
+            # [200, 176] -> [100, 88]
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(256),
+            nn.ReLU(),
+
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(256),
+            nn.ReLU(),
+
+        )
+
+        self.trans_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.trans_1 = nn.Sequential(
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_0 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_1 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.conv_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.w_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm(128),
+        )
+
+        self.conv_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm(128),
+            nn.ReLU(),
+        )
+
+        self.w_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm(128),
+        )
+
+
+
+
+    def forward(self, data_dict):
+        x = data_dict["spatial_features_2d"]
+        x_0 = self.bottom_up_block_0(x)
+        x_1 = self.bottom_up_block_1(x_0)
+        x_trans_0 = self.trans_0(x_0)
+        x_trans_1 = self.trans_1(x_1)
+        x_middle_0 = self.deconv_block_0(x_trans_1) + x_trans_0
+        x_middle_1 = self.deconv_block_1(x_trans_1)
+        x_output_0 = self.conv_0(x_middle_0)
+        x_output_1 = self.conv_1(x_middle_1)
+
+        x_weight_0 = self.w_0(x_output_0)
+        x_weight_1 = self.w_1(x_output_1)
+        x_weight = torch.softmax(torch.cat([x_weight_0, x_weight_1], dim=1), dim=1)
+        x_output = x_output_0 * x_weight[:, 0:1, :, :] + x_output_1 * x_weight[:, 1:, :, :]
+
+        return x_output.contiguous()
