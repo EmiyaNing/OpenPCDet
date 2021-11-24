@@ -245,9 +245,9 @@ class TransSSFA(nn.Module):
         self.model_cfg = model_cfg
         dim = input_channels
         out_dim    = dim
-        self.focus = Focus(3, dim)
-        self.spp   = SPPBottleneck(dim, dim)
-        self.compress = nn.Conv2d(dim * 2, dim, 1, 1)
+        self.focus = Focus(3, 32)
+        self.spp   = SPPBottleneck(32, 64)
+        self.compress = nn.Conv2d(dim + 64, dim, 1, 1)
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
@@ -374,10 +374,11 @@ class TransBEVNet(nn.Module):
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
+        self.num_bev_features = 256
         self.num_filters = 256
-        self.fcous    = Focus(3, dim//2)
-        self.spp      = SPPBottleneck(dim//2, out_dim)
-        self.compress = nn.Conv2d(dim + out_dim, out_dim, 1, 1)
+        self.fcous    = Focus(3, 32)
+        self.spp      = SPPBottleneck(32, 64)
+        self.compress = nn.Conv2d(dim + 64, dim, 1, 1)
         self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
         self.layers = nn.Sequential(
             nn.Conv2d(input_channels, num_filters, 3, 1, 1),

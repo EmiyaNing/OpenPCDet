@@ -116,6 +116,8 @@ def main():
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
+    #if dist_train:
+    #    model = torch.nn.parallel.DistributedDataParallel(model,find_unused_parameters=True)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
