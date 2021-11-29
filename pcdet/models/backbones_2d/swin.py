@@ -8,8 +8,8 @@
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
-from network_blocks import Focus, SPPBottleneck
-from bev_transformer import DropPath, TransBlock
+from .network_blocks import Focus, SPPBottleneck
+from .bev_transformer import DropPath, TransBlock
 
 
 class Mlp(nn.Module):
