@@ -8,6 +8,8 @@
 7. Add a BEV feature input branch for BEVRPNbackbone
 8. Add a Deeplab style dilate conv 3d block to extend the receptive field
 9. Add a coordinate 3d attention for this model
+10. Uncertainty loss
+11. Decouple the class head and reg heads
 
 ### Hard rank
 1 *
@@ -19,9 +21,12 @@
 7 **
 8 **
 9 ***
+10 *
+11 **
 
 ### Implement order
-1 -> 2 -> 5 -> 7 -> 9 -> 3 -> 6 -> 4 -> 8
+1 -> 2 -> 5 -> 7 -> 9 -> 10 -> 11 -> 6 -> 3 -> 4 -> 8
+Now we have reach the step 10
 3 is the task's pre_task
 
 ### 2021/11/14 Works

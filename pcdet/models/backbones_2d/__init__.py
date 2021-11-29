@@ -1,5 +1,5 @@
 from .base_bev_backbone import BaseBEVBackbone
-from .bev_transformer import TransBEVBackbone, TransSSFA, TransBEVNet
+from .bev_transformer import TransBEVBackbone, TransSSFA, TransBEVNet, TransSSFAv2
 from .darknet import CSPDarknet, CoordTransformer
 
 __all__ = {
@@ -9,4 +9,5 @@ __all__ = {
     'CoordTransformer': CoordTransformer,
     'TransSSFA': TransSSFA,
     'TransBEVNet': TransBEVNet,
+    'TransSSFAv2': TransSSFAv2
 }

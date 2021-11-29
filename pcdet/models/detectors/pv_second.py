@@ -3,6 +3,7 @@ import torch.nn as nn
 from numpy.lib.function_base import disp
 from .detector3d_template import Detector3DTemplate
 
+NotRUn_in_inference = ['pfe', 'point_head', 'roi_head']
 
 class PVSECONDNet(Detector3DTemplate):
     def __init__(self, model_cfg, num_class, dataset):
@@ -12,10 +13,10 @@ class PVSECONDNet(Detector3DTemplate):
         self.sigma = nn.Parameter(sigma)
 
     def forward(self, batch_dict):
-        for cur_module in self.module_list:
-            batch_dict = cur_module(batch_dict)
-
         if self.training:
+            for cur_module in self.module_list:
+                batch_dict = cur_module(batch_dict)
+
             loss, tb_dict, disp_dict = self.get_training_loss()
 
             ret_dict = {
@@ -23,6 +24,12 @@ class PVSECONDNet(Detector3DTemplate):
             }
             return ret_dict, tb_dict, disp_dict
         else:
+            # Not forward the voxelsetabstraction and point head
+            for cur_module in self.module_list:
+                if cur_module.__class__.__name__ not in ['VoxelSetAbstraction','PointHeadSimple']:
+                    batch_dict = cur_module(batch_dict)
+
+            
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             return pred_dicts, recall_dicts
 

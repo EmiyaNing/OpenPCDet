@@ -1,9 +1,16 @@
 from functools import partial
-
+import torch
 import spconv
 import torch.nn as nn
-from ....ops.pointnet2.pointnet2_utils import three_interpolate, three_nn
-from ....utils.transform_utils import tensor2points
+from pcdet.ops.pointnet2.pointnet2_stack.pointnet2_utils import three_interpolate, three_nn
+
+
+def tensor2points(tensor, offset=(0., -40., -3.), voxel_size=(.05, .05, .1)):
+    indices = tensor.indices.float()
+    offset = torch.Tensor(offset).to(indices.device)
+    voxel_size = torch.Tensor(voxel_size).to(indices.device)
+    indices[:, 1:] = indices[:, [3, 2, 1]] * voxel_size + offset + .5 * voxel_size
+    return tensor.features, indices
 
 
 
@@ -302,6 +309,10 @@ class VoxelResBackBone8x(nn.Module):
         return batch_dict
 
 class VoxelBackBoneAuxiliary(nn.Module):
+    '''
+        This class try to implement the SA-SSD style 3D Backbone.
+        But it still have many bug.....
+    '''
     def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
         super().__init__()
         self.model_cfg = model_cfg
