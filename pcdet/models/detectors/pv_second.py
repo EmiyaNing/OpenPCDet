@@ -26,7 +26,7 @@ class PVSECONDNet(Detector3DTemplate):
         else:
             # Not forward the voxelsetabstraction and point head
             for cur_module in self.module_list:
-                if cur_module.__class__.__name__ not in ['VoxelSetAbstraction','PointHeadSimple']:
+                if cur_module.__class__.__name__ not in ['ResidualVoxelToPointDecoder','VoxelSetAbstraction','PointHeadSimple']:
                     batch_dict = cur_module(batch_dict)
 
             
