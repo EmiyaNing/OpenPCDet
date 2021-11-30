@@ -136,6 +136,20 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['module_list'].append(dense_head_module)
         return dense_head_module, model_info_dict
 
+    def build_post_pfe(self, model_info_dict):
+        if self.model_cfg.get('POST_PFE', None) is None:
+            return None, model_info_dict
+
+        pfe_module = pfe.__all__[self.model_cfg.POST_PFE.NAME](
+            model_cfg=self.model_cfg.POST_PFE,
+            voxel_size=model_info_dict['voxel_size'],
+            point_cloud_range=model_info_dict['point_cloud_range'],
+        )
+        model_info_dict['module_list'].append(pfe_module)
+        model_info_dict['num_point_features'] = pfe_module.num_point_features
+        model_info_dict['num_point_features_before_fusion'] = pfe_module.num_point_features_before_fusion
+        return pfe_module, model_info_dict
+
     def build_point_head(self, model_info_dict):
         if self.model_cfg.get('POINT_HEAD', None) is None:
             return None, model_info_dict
