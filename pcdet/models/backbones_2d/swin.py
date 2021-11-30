@@ -105,7 +105,7 @@ class WindowAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        trunc_normal_(self.relative_position_bias_table, std=.02)
+        nn.init.kaiming_normal_(self.relative_position_bias_table)
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, mask=None):
@@ -357,9 +357,9 @@ class TransSwinFA(nn.Module):
         self.model_cfg = model_cfg
         dim = input_channels
         out_dim    = dim
-        self.focus = Focus(3, 32)
-        self.spp   = SPPBottleneck(32, 64)
-        self.compress = nn.Conv2d(dim + 64, dim, 1, 1)
+        self.focus = Focus(3, 256)
+        self.spp   = SPPBottleneck(256, 256)
+        self.compress = nn.Conv2d(dim + 256, dim, 1, 1)
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
@@ -386,8 +386,8 @@ class TransSwinFA(nn.Module):
             nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
             nn.BatchNorm2d(256),
             nn.ReLU(),
-            BasicLayer(256, (100, 88), 3, 4, 4)
         )
+        self.swin_block = BasicLayer(256, (100, 88), 3, 4, 4)
 
 
         self.trans_0 = nn.Sequential(
@@ -450,6 +450,12 @@ class TransSwinFA(nn.Module):
         x   = self.project(x)
         x_0 = self.bottom_up_block_0(x)
         x_1 = self.bottom_up_block_1(x_0)
+        x_1 = x_1.permute(0, 2, 3, 1)
+        b, h, w, c = x_1.shape
+        x_1 = x_1.reshape(b, h * w, c)
+        x_1 = self.swin_block(x_1)
+        x_1 = x_1.reshape(b, h, w, c)
+        x_1 = x_1.permute(0, 3, 1, 2)
         x_trans_0 = self.trans_0(x_0)
         x_trans_1 = self.trans_1(x_1)
         x_middle_0 = self.deconv_block_0(x_trans_1) + x_trans_0

@@ -180,7 +180,7 @@ class DecoupleHeadThree(AnchorHeadTemplate):
 
         self.cls_stems = nn.Sequential(
             nn.Conv2d(
-                input_channels, 256, 3, 1, 1
+                input_channels, 256, 1, 1
             ),
             nn.Conv2d(
                 256, 256, 3, 1, 1
@@ -192,7 +192,7 @@ class DecoupleHeadThree(AnchorHeadTemplate):
 
         self.reg_stems = nn.Sequential(
             nn.Conv2d(
-                input_channels, 256, 3, 1, 1
+                input_channels, 256, 1, 1
             ),
             nn.Conv2d(
                 256, 256, 3, 1, 1
@@ -278,10 +278,10 @@ class DecoupleHeadFour(AnchorHeadTemplate):
 
         self.cls_stems = nn.Sequential(
             nn.Conv2d(
-                input_channels, 256, 3, 1, 1
+                input_channels, 256, 1, 1
             ),
             nn.Conv2d(
-                256, 256, 3, 1, 1
+                256, 256, 1, 1
             ),
             nn.Conv2d(
                 256, 256, 3, 1, 1
@@ -293,10 +293,10 @@ class DecoupleHeadFour(AnchorHeadTemplate):
 
         self.reg_stems = nn.Sequential(
             nn.Conv2d(
-                input_channels, 256, 3, 1, 1
+                input_channels, 256, 1, 1
             ),
             nn.Conv2d(
-                256, 256, 3, 1, 1
+                256, 256, 1, 1
             ),
             nn.Conv2d(
                 256, 256, 3, 1, 1

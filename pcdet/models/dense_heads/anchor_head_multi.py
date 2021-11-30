@@ -74,6 +74,16 @@ class SingleHead(BaseBEVBackbone):
 
             assert code_size_cnt == code_size, f'Code size does not match: {code_size_cnt}:{code_size}'
         else:
+            self.reg_stem = nn.Sequential(
+                nn.Conv2d(input_channels, input_channels, 1, 1),
+                nn.Conv2d(input_channels, input_channels, 3, 1, 1),
+                nn.Conv2d(input_channels, input_channels, 3, 1, 1),
+            )
+            self.cls_stem = nn.Sequential(
+                nn.Conv2d(input_channels, input_channels, 1, 1),
+                nn.Conv2d(input_channels, input_channels, 3, 1, 1),
+                nn.Conv2d(input_channels, input_channels, 3, 1, 1),
+            )
             self.conv_cls = nn.Conv2d(
                 input_channels, self.num_anchors_per_location * self.num_class,
                 kernel_size=1
@@ -105,14 +115,16 @@ class SingleHead(BaseBEVBackbone):
         ret_dict = {}
         spatial_features_2d = super().forward({'spatial_features': spatial_features_2d})['spatial_features_2d']
 
-        cls_preds = self.conv_cls(spatial_features_2d)
+        cls_temps = self.cls_stem(spatial_features_2d)
+        cls_preds = self.conv_cls(cls_temps)
+        box_temps = self.reg_stem(spatial_features_2d)
 
         if self.separate_reg_config is None:
-            box_preds = self.conv_box(spatial_features_2d)
+            box_preds = self.conv_box(box_temps)
         else:
             box_preds_list = []
             for reg_name in self.conv_box_names:
-                box_preds_list.append(self.conv_box[reg_name](spatial_features_2d))
+                box_preds_list.append(self.conv_box[reg_name](box_temps))
             box_preds = torch.cat(box_preds_list, dim=1)
 
         if not self.use_multihead:
@@ -129,7 +141,7 @@ class SingleHead(BaseBEVBackbone):
             cls_preds = cls_preds.view(batch_size, -1, self.num_class)
 
         if self.conv_dir_cls is not None:
-            dir_cls_preds = self.conv_dir_cls(spatial_features_2d)
+            dir_cls_preds = self.conv_dir_cls(box_temps)
             if self.use_multihead:
                 dir_cls_preds = dir_cls_preds.view(
                     -1, self.num_anchors_per_location, self.model_cfg.NUM_DIR_BINS, H, W).permute(0, 1, 3, 4,
