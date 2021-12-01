@@ -472,3 +472,43 @@ class TransSwinFA(nn.Module):
         return data_dict
 
 
+
+
+class TransSWINNet(nn.Module):
+    '''
+        SWIN with BEV INPUT branch.
+    '''
+    def __init__(self, model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        num_filters = self.model_cfg.NUM_FILTERS
+        dim = input_channels
+        out_dim   = dim
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.num_bev_features = 256
+        self.num_filters = 256
+        self.fcous    = Focus(3, 256)
+        self.spp      = SPPBottleneck(256, 256)
+        self.compress = nn.Conv2d(dim + 256, dim, 1, 1)
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.layers = BasicLayer(256, (200, 176), 6, 4, 8)
+
+
+    def forward(self, data_dict):
+        origin_bev = data_dict["bev"]
+        features   = data_dict["spatial_features"]
+        origin_for = self.spp(self.fcous(origin_bev))
+        origin_for = origin_for.permute(0, 1, 3, 2)
+        concat_fea = torch.cat([features, origin_for], 1)
+        x = self.compress(concat_fea)
+        trans_out  = self.transformer(x)
+        trans_out  = trans_out.permute(0, 2, 3, 1)
+        b, h, w, c = trans_out.shape
+        trans_out  = trans_out.reshape(b, h * w, c)
+        result     = self.layers(trans_out)
+        result     = result.reshape(b, h, w, c)
+        result     = result.permute(0, 3, 1, 2)
+        data_dict["spatial_features_2d"] = result
+        return data_dict
