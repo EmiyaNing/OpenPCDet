@@ -1,7 +1,8 @@
 from .base_bev_backbone import BaseBEVBackbone
 from .bev_transformer import TransBEVBackbone, TransSSFA, TransBEVNet, TransSSFAv2
 from .darknet import CSPDarknet, CoordTransformer
-from .swin import TransSwinFA,TransSWINNet
+from .swin import TransSwinFA,TransSWINNet, TransSWINNetV2, TransSWINFFANet
+from .poolformer import TransSPFANet
 
 __all__ = {
     'BaseBEVBackbone': BaseBEVBackbone,
@@ -13,4 +14,7 @@ __all__ = {
     'TransSSFAv2': TransSSFAv2,
     'TransSwinFA': TransSwinFA,
     'TransSWINNet': TransSWINNet,
+    'TransSWINNetV2': TransSWINNetV2,
+    'TransSWINFFANet': TransSWINFFANet,
+    'TransSPFANet': TransSPFANet,
 }
