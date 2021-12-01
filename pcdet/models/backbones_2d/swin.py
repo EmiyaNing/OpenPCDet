@@ -8,7 +8,7 @@
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
-from .network_blocks import Focus, SPPBottleneck
+from .network_blocks import Focus, SPPBottleneck, BaseConv
 from .bev_transformer import DropPath, TransBlock
 
 
@@ -510,5 +510,143 @@ class TransSWINNet(nn.Module):
         result     = self.layers(trans_out)
         result     = result.reshape(b, h, w, c)
         result     = result.permute(0, 3, 1, 2)
+        data_dict["spatial_features_2d"] = result
+        return data_dict
+
+
+class TransSWINNetV2(nn.Module):
+    '''
+        SWIN with BEV INPUT branch.
+    '''
+    def __init__(self, model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        num_filters = self.model_cfg.NUM_FILTERS
+        dim = input_channels
+        out_dim   = dim
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.num_bev_features = 256
+        self.num_filters = 256
+        self.fcous    = Focus(3, 256)
+        self.spp      = SPPBottleneck(256, 256)
+        self.compress = BaseConv(dim + 256, dim, 1, 1)
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.layer_block1 = BasicLayer(256, (200, 176), 3, 4, 8)
+        self.down_sample = BaseConv(256, 256, 3, 2)
+        self.layer_block2 = BasicLayer(256, (100, 88), 3, 4, 4)
+        self.deconv = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.SiLU(),
+        )
+
+
+
+    def forward(self, data_dict):
+        origin_bev = data_dict["bev"]
+        features   = data_dict["spatial_features"]
+        origin_for = self.spp(self.fcous(origin_bev))
+        origin_for = origin_for.permute(0, 1, 3, 2)
+        concat_fea = torch.cat([features, origin_for], 1)
+        x = self.compress(concat_fea)
+        trans_out  = self.transformer(x)
+
+        trans_out  = trans_out.permute(0, 2, 3, 1)
+        b, h, w, c = trans_out.shape
+        trans_out  = trans_out.reshape(b, h * w, c)
+        block1     = self.layer_block1(trans_out)
+        block1     = block1.reshape(b, h, w, c)
+        block1     = block1.permute(0, 3, 1, 2)
+        block1     = self.down_sample(block1)
+
+        block_temp = block1.permute(0, 2, 3, 1)
+        b, h, w, c = block_temp.shape
+        block_temp = block_temp.reshape(b, h * w, c)
+        block2     = self.layer_block2(block_temp)
+        block2     = block2.reshape(b, h, w, c)
+        block2     = block2.permute(0, 3, 1, 2)
+        block2     = self.deconv(block2)
+
+        result     = block1 + block2
+
+        data_dict["spatial_features_2d"] = result
+        return data_dict
+
+
+class TransSWINFFANet(nn.Module):
+    '''
+        SWIN with BEV INPUT branch.
+    '''
+    def __init__(self, model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        num_filters = self.model_cfg.NUM_FILTERS
+        dim = input_channels
+        out_dim   = dim
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.num_bev_features = 256
+        self.num_filters = 256
+        self.fcous    = Focus(3, 256)
+        self.spp      = SPPBottleneck(256, 256)
+        self.compress = BaseConv(dim + 256, dim, 1, 1)
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.layer_block1 = BasicLayer(256, (200, 176), 3, 4, 8)
+        self.down_sample = BaseConv(256, 256, 3, 2)
+        self.layer_block2 = BasicLayer(256, (100, 88), 3, 4, 4)
+        self.deconv = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.SiLU(),
+        )
+
+        self.weight_spatil = nn.Sequential(
+            BaseConv(256, 128, 3, 1),
+            BaseConv(128, 1, 1, 1),
+        )
+        self.weight_segment= nn.Sequential(
+            BaseConv(256, 128, 3, 1),
+            BaseConv(128, 1, 1, 1),
+        )
+
+
+
+    def forward(self, data_dict):
+        origin_bev = data_dict["bev"]
+        features   = data_dict["spatial_features"]
+        origin_for = self.spp(self.fcous(origin_bev))
+        origin_for = origin_for.permute(0, 1, 3, 2)
+        concat_fea = torch.cat([features, origin_for], 1)
+        x = self.compress(concat_fea)
+        trans_out  = self.transformer(x)
+
+
+
+        trans_out  = trans_out.permute(0, 2, 3, 1)
+        b, h, w, c = trans_out.shape
+        trans_out  = trans_out.reshape(b, h * w, c)
+        block1     = self.layer_block1(trans_out)
+        block1     = block1.reshape(b, h, w, c)
+        block1     = block1.permute(0, 3, 1, 2)
+        block1     = self.down_sample(block1)
+
+        block_temp = block1.permute(0, 2, 3, 1)
+        b, h, w, c = block_temp.shape
+        block_temp = block_temp.reshape(b, h * w, c)
+        block2     = self.layer_block2(block_temp)
+        block2     = block2.reshape(b, h, w, c)
+        block2     = block2.permute(0, 3, 1, 2)
+        block2     = self.deconv(block2)
+
+        weight1    = self.weight_spatil(block1)
+        weight2    = self.weight_segment(block2)
+
+        weight     = torch.softmax(torch.cat([weight1, weight2], dim=1), dim=1)
+
+        result     = block1 * weight[:, 0:1, :, :] + block2 * weight[:, 1:2, :, :]
+
         data_dict["spatial_features_2d"] = result
         return data_dict
