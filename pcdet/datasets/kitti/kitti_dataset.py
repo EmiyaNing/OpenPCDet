@@ -372,11 +372,11 @@ class KittiDataset(DatasetTemplate):
         points = self.removePoints(points, boundry)
         discretization_x = Map_config["discretization_x"]
         discretization_y = Map_config["discretization_y"]
-        Height = Map_config["BEVHeight"]
-        Width  = Map_config["BEVWidth"]
+        Width   = Map_config["BEVHeight"]
+        Height  = Map_config["BEVWidth"]
 
         PointCloud = np.copy(points)
-        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x))
+        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x) + Height / 2 - 1)
         PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y))
 
         indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
@@ -406,6 +406,7 @@ class KittiDataset(DatasetTemplate):
         RGB_Map[2, :, :] = densityMap[:Height, :Width]  # r_map
         RGB_Map[1, :, :] = heightMap[:Height, :Width]  # g_map
         RGB_Map[0, :, :] = intensityMap[:Height, :Width]  # b_map
+        RGB_Map = np.transpose(RGB_Map, [0, 2, 1])
         return RGB_Map
 
 
