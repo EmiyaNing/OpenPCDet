@@ -46,7 +46,6 @@ MODEL:
     BACKBONE_2D:
         NAME: TransSSFA
 
-        #NAME: TransBEVBackbone
         DEPTHWISE: True
         CONV_ACTION: silu
         NUM_HEADS: 4
