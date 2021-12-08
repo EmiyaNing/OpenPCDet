@@ -474,6 +474,130 @@ class TransSwinFA(nn.Module):
 
 
 
+class TransSwinFAV2(nn.Module):
+    '''
+        CIA-SSD version 2d backbone
+    '''
+    def __init__(self,  model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        dim = input_channels
+        out_dim    = dim
+        self.focus = Focus(3, 256)
+        self.spp   = SPPBottleneck(256, 256)
+        self.compress = nn.Conv2d(dim + 256, dim, 1, 1)
+        num_head  = self.model_cfg.NUM_HEADS
+        drop      = self.model_cfg.DROP_RATE
+        act       = self.model_cfg.ACT
+        self.num_bev_features = 128
+        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
+        self.project     = nn.Conv2d(out_dim, out_dim // 2, 1)
+        self.bottom_up_block_0 = nn.Sequential(
+            BaseConv(128, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
+        )
+
+        self.bottom_up_block_1 = nn.Sequential(
+            # [200, 176] -> [100, 88]
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+        self.swin_block = BasicLayer(256, (100, 88), 3, 8, 4)
+
+
+        self.trans_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.trans_1 = nn.Sequential(
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_0 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_1 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.conv_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.w_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(1),
+        )
+
+        self.conv_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.w_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(1),
+        )
+
+
+    def forward_swin_block_1(self, inputs):
+        x = inputs.permute(0, 2, 3, 1)
+        b, h, w, c = x.shape
+        x = x.reshape(b, h * w, c)
+        x = self.swin_block(x)
+        x = x.reshape(b, h, w, c)
+        x = x.permute(0, 3, 1, 2)
+        return x
+
+
+    def forward(self, data_dict):
+        x = data_dict["spatial_features"]
+        bev = data_dict["bev"]
+        bev_pred = self.spp(self.focus(bev))
+        bev_pred = bev_pred.permute(0, 1, 3, 2)
+        x   = torch.cat([x, bev_pred], 1)
+        x   = self.compress(x)
+        x   = self.transformer(x)
+        x   = self.project(x)
+
+
+        x_0 = self.bottom_up_block_0(x)
+
+
+
+        x_1 = self.bottom_up_block_1(x_0)
+        x_1 = self.forward_swin_block_1(x_1)
+
+        x_trans_0 = self.trans_0(x_0)
+        x_trans_1 = self.trans_1(x_1)
+        x_middle_0 = self.deconv_block_0(x_trans_1) + x_trans_0
+        x_middle_1 = self.deconv_block_1(x_trans_1)
+        x_output_0 = self.conv_0(x_middle_0)
+        x_output_1 = self.conv_1(x_middle_1)
+
+        x_weight_0 = self.w_0(x_output_0)
+        x_weight_1 = self.w_1(x_output_1)
+        x_weight = torch.softmax(torch.cat([x_weight_0, x_weight_1], dim=1), dim=1)
+        x_output = x_output_0 * x_weight[:, 0:1, :, :] + x_output_1 * x_weight[:, 1:, :, :]
+        data_dict["spatial_features_2d"] = x_output.contiguous()
+
+        return data_dict
+
+
 class TransSWINNet(nn.Module):
     '''
         SWIN with BEV INPUT branch.
@@ -481,7 +605,6 @@ class TransSWINNet(nn.Module):
     def __init__(self, model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
-        num_filters = self.model_cfg.NUM_FILTERS
         dim = input_channels
         out_dim   = dim
         num_head  = self.model_cfg.NUM_HEADS
@@ -493,7 +616,9 @@ class TransSWINNet(nn.Module):
         self.spp      = SPPBottleneck(256, 256)
         self.compress = nn.Conv2d(dim + 256, dim, 1, 1)
         self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
-        self.layers = BasicLayer(256, (200, 176), 6, 4, 8)
+        self.down_sample = BaseConv(256, 256, 3, 2)
+        self.layers = BasicLayer(256, (100, 88), 6, 4, 4)
+        self.deconv = nn.ConvTranspose2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False)
 
 
     def forward(self, data_dict):
@@ -504,12 +629,14 @@ class TransSWINNet(nn.Module):
         concat_fea = torch.cat([features, origin_for], 1)
         x = self.compress(concat_fea)
         trans_out  = self.transformer(x)
+        trans_out  = self.down_sample(trans_out)
         trans_out  = trans_out.permute(0, 2, 3, 1)
         b, h, w, c = trans_out.shape
         trans_out  = trans_out.reshape(b, h * w, c)
         result     = self.layers(trans_out)
         result     = result.reshape(b, h, w, c)
         result     = result.permute(0, 3, 1, 2)
+        result     = self.deconv(result)
         data_dict["spatial_features_2d"] = result
         return data_dict
 
@@ -521,7 +648,6 @@ class TransSWINNetV2(nn.Module):
     def __init__(self, model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
-        num_filters = self.model_cfg.NUM_FILTERS
         dim = input_channels
         out_dim   = dim
         num_head  = self.model_cfg.NUM_HEADS
@@ -582,7 +708,6 @@ class TransSWINFFANet(nn.Module):
     def __init__(self, model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
-        num_filters = self.model_cfg.NUM_FILTERS
         dim = input_channels
         out_dim   = dim
         num_head  = self.model_cfg.NUM_HEADS

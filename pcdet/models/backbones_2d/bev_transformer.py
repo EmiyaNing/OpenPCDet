@@ -458,7 +458,7 @@ class TransSSFAv2(nn.Module):
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
         self.num_bev_features = 128
-        self.transformer = TransPositionBlock(dim, out_dim, num_head, None, drop, act)
+        #self.transformer = TransPositionBlock(dim, out_dim, num_head, None, drop, act)
         self.project     = nn.Conv2d(out_dim, out_dim // 2, 1)
         self.bottom_up_block_0 = nn.Sequential(
             nn.ZeroPad2d(1),
@@ -541,7 +541,8 @@ class TransSSFAv2(nn.Module):
 
 
     def forward(self, data_dict):
-        x = self.transformer(data_dict)
+        #x = self.transformer(data_dict)
+        x   = data_dict['spatial_features']
         x   = self.project(x)
         x_0 = self.bottom_up_block_0(x)
         x_1 = self.bottom_up_block_1(x_0)

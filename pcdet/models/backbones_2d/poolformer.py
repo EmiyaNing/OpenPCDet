@@ -160,33 +160,35 @@ class TransSPFANet(nn.Module):
     def __init__(self, model_cfg, input_channels):
         super().__init__()
         self.model_cfg = model_cfg
-        num_filters = self.model_cfg.NUM_FILTERS
         dim = input_channels
         out_dim   = dim
         num_head  = self.model_cfg.NUM_HEADS
         drop      = self.model_cfg.DROP_RATE
         act       = self.model_cfg.ACT
-        self.num_bev_features = 256
+        self.num_bev_features = 128
         self.num_filters = 256
         self.fcous    = Focus(3, 256)
         self.spp      = SPPBottleneck(256, 256)
-        self.compress = BaseConv(dim + 256, dim, 1, 1)
-        self.transformer = TransBlock(dim, out_dim, num_head, None, drop, act)
-        self.layer_block1 = PoolFormerLayer(256, 8, 3)
-        self.down_sample = BaseConv(256, 256, 3, 2)
-        self.layer_block2 = BasicLayer(256, (100, 88), 3, 4, 4)
+        self.compress = nn.Sequential(
+            BaseConv(dim + 256, dim, 1, 1),
+            BaseConv(dim, dim // 2, 1, 1)
+        )
+        self.transformer = TransBlock(dim // 2, out_dim // 2, num_head, None, drop, act)
+        self.layer_block1 = PoolFormerLayer(128, 7, 3, mlp_ratio=1)
+        self.down_sample = BaseConv(128, 128, 3, 2)
+        self.layer_block2 = BasicLayer(128, (100, 88), 3, 4, 4)
         self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
-            nn.BatchNorm2d(256),
+            nn.ConvTranspose2d(in_channels=128, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+            nn.BatchNorm2d(128),
             nn.SiLU(),
         )
 
         self.weight_spatil = nn.Sequential(
-            BaseConv(256, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
             BaseConv(128, 1, 1, 1),
         )
         self.weight_segment= nn.Sequential(
-            BaseConv(256, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
             BaseConv(128, 1, 1, 1),
         )
 
@@ -204,10 +206,10 @@ class TransSPFANet(nn.Module):
 
         # spatial information group use the poolformer
         block1     = self.layer_block1(trans_out)
-        block1     = self.down_sample(block1)
+        down_block1= self.down_sample(block1)
 
         # segmation information group use the swin-transformer
-        block_temp = block1.permute(0, 2, 3, 1)
+        block_temp = down_block1.permute(0, 2, 3, 1)
         b, h, w, c = block_temp.shape
         block_temp = block_temp.reshape(b, h * w, c)
         block2     = self.layer_block2(block_temp)
@@ -224,6 +226,125 @@ class TransSPFANet(nn.Module):
 
         data_dict["spatial_features_2d"] = result
         return data_dict
+
+
+class TransSPoolformer(nn.Module):
+    '''
+        CIA-SSD version 2d backbone
+    '''
+    def __init__(self,  model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        dim = input_channels
+        out_dim    = dim
+        self.position_embedding = nn.Sequential(
+            BaseConv(3, 64, 4, 4),
+            BaseConv(64, 128, 1, 1),
+            BaseConv(128, 256, 1, 1),
+        )
+        self.project     = nn.Conv2d(out_dim, out_dim // 2, 1)
+        self.bottom_up_block_0 = nn.Sequential(
+            BaseConv(128, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
+            BaseConv(128, 128, 3, 1),
+        )
+        self.num_bev_features = 128
+
+        self.bottom_up_block_1 = nn.Sequential(
+            # [200, 176] -> [100, 88]
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1, bias=False, ),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+        self.swin_block = BasicLayer(256, (100, 88), 3, 8, 4)
+
+
+        self.trans_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.trans_1 = nn.Sequential(
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_0 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.deconv_block_1 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.conv_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.w_0 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(1),
+        )
+
+        self.conv_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1, bias=False, ),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+        )
+
+        self.w_1 = nn.Sequential(
+            nn.Conv2d(in_channels=128, out_channels=1, kernel_size=1, stride=1, padding=0, bias=False, ),
+            nn.BatchNorm2d(1),
+        )
+
+
+    def forward_swin_block_1(self, inputs):
+        x = inputs.permute(0, 2, 3, 1)
+        b, h, w, c = x.shape
+        x = x.reshape(b, h * w, c)
+        x = self.swin_block(x)
+        x = x.reshape(b, h, w, c)
+        x = x.permute(0, 3, 1, 2)
+        return x
+
+
+    def forward(self, data_dict):
+        x = data_dict["spatial_features"]
+        bev = data_dict["bev"]
+        bev = bev.permute(0, 1, 3, 2)
+        position = self.position_embedding(bev)
+        x   = x + position
+
+        x   = self.project(x)
+
+
+        x_0 = self.bottom_up_block_0(x)
+        x_1 = self.bottom_up_block_1(x_0)
+        x_1 = self.forward_swin_block_1(x_1)
+
+        x_trans_0 = self.trans_0(x_0)
+        x_trans_1 = self.trans_1(x_1)
+        x_middle_0 = self.deconv_block_0(x_trans_1) + x_trans_0
+        x_middle_1 = self.deconv_block_1(x_trans_1)
+        x_output_0 = self.conv_0(x_middle_0)
+        x_output_1 = self.conv_1(x_middle_1)
+
+        x_weight_0 = self.w_0(x_output_0)
+        x_weight_1 = self.w_1(x_output_1)
+        x_weight = torch.softmax(torch.cat([x_weight_0, x_weight_1], dim=1), dim=1)
+        x_output = x_output_0 * x_weight[:, 0:1, :, :] + x_output_1 * x_weight[:, 1:, :, :]
+        data_dict["spatial_features_2d"] = x_output.contiguous()
+
+        return data_dict
+
 
 
 if __name__ == '__main__':

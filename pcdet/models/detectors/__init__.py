@@ -19,7 +19,7 @@ __all__ = {
     'SECONDNetIoU': SECONDNetIoU,
     'CaDDN': CaDDN,
     'VoxelRCNN': VoxelRCNN,
-    'PVSECONDNet': PVSECONDNet
+    'PVSECONDNet': PVSECONDNet,
 }
 
 
