@@ -1,6 +1,8 @@
 import argparse
 import glob
 from pathlib import Path
+import math
+
 
 import mayavi.mlab as mlab
 import numpy as np
@@ -10,7 +12,7 @@ import cv2
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
-from pcdet.utils import common_utils
+from pcdet.utils import common_utils, object3d_kitti
 from visual_utils import visualize_utils as V
 
 
@@ -63,7 +65,7 @@ class DemoDataset(DatasetTemplate):
         Height  = Map_config["BEVWidth"]
 
         PointCloud = np.copy(points)
-        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x) + Height / 2)
+        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x)+ Height / 2)
         PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y))
         indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
         PointCloud = PointCloud[indices]
@@ -96,6 +98,13 @@ class DemoDataset(DatasetTemplate):
         return RGB_Map
 
 
+    def get_label(self, index):
+        cwd        = self.root_path.stem + '.txt'
+        root_path  = self.root_path.parent.parent
+        label_file = root_path / 'label_2' / cwd
+        assert label_file.exists()
+        return object3d_kitti.get_objects_from_label(label_file)
+
     def __getitem__(self, index):
         if self.ext == '.bin':
             points = np.fromfile(self.sample_file_list[index], dtype=np.float32).reshape(-1, 4)
@@ -103,6 +112,16 @@ class DemoDataset(DatasetTemplate):
             points = np.load(self.sample_file_list[index])
         else:
             raise NotImplementedError
+        labels = self.get_label(index)
+        #labels = common_utils.drop_info_with_name(labels, name='DontCare')
+        gt_labels = []
+        for label in labels:
+            if label.cls_type == 'DontCare':
+                continue
+            x, y, z = label.loc
+            w, l, h = label.w, label.l, label.h
+            alpha   = label.alpha + math.pi
+            gt_labels.append([z, y, x, w, l, h, alpha])
         boundry = {}
         point_range = self.dataset_cfg.POINT_CLOUD_RANGE
         voxel_step  = self.dataset_cfg.DATA_PROCESSOR[2].VOXEL_SIZE
@@ -115,20 +134,20 @@ class DemoDataset(DatasetTemplate):
         boundry["maxZ"] = point_range[5]
         boundry["step_x"] = voxel_step[1]
         boundry["step_y"] = voxel_step[0]
-        #print("Start to transfor bev image")
         rgb_map = self.makeBEVFeature(points, boundry, MAP_config)
-        #print("BEV image transfor finish")
-        print_map = np.floor(rgb_map * 255)
+
+        '''print_map = np.floor(rgb_map * 255)
         print_map = print_map.astype(np.uint8)
         print_map = print_map.transpose(1, 2, 0)
-        cv2.imshow("bev_image", print_map)
+        cv2.imshow("bev_image", print_map)'''
 
 
 
         input_dict = {
             'points': points,
             'frame_id': index,
-            'bev': rgb_map
+            'bev': rgb_map,
+            'gt_labels': gt_labels
         }
 
         data_dict = self.prepare_data(data_dict=input_dict)
@@ -171,29 +190,17 @@ def main():
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
             pred_dicts, _ = model.forward(data_dict)
-            bev_feature   = pred_dicts[0]['bev_feature']
-            print(bev_feature.shape)
-            scores = pred_dicts[0]['pred_scores']
-            boxes  = pred_dicts[0]['pred_boxes']
-            labels = pred_dicts[0]['pred_labels']
-            indices = scores > 0.5
-            filter_box = boxes[indices]
-            filter_sco = scores[indices]
-            filter_lab = labels[indices]
-        
-            
+            gt_box    = data_dict['gt_labels'].squeeze(0)
+            print(gt_box)
+            print(pred_dicts[0]['pred_boxes'])
 
 
-            '''V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )'''
             V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=filter_box,
-                ref_scores=filter_sco, ref_labels=filter_lab
+                points=data_dict['points'][:, 1:], gt_boxes=gt_box,ref_boxes=pred_dicts[0]['pred_boxes'],
+                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
             )
+
             mlab.show(stop=True)
-            
 
     logger.info('Demo done.')
 

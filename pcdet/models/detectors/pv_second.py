@@ -47,5 +47,6 @@ class PVSECONDNet(Detector3DTemplate):
         }
 
         loss = loss_rpn / (2 * self.sigma[0] ** 2) + loss_point / (2 * self.sigma[1] ** 2)
-        loss += torch.log(self.sigma.pow(2).prod())
+        #loss += torch.log(self.sigma.pow(2).prod())
+        loss = loss + torch.log(1 + self.sigma[0]**2) + torch.log(1 + self.sigma[1]**2) 
         return loss, tb_dict, disp_dict

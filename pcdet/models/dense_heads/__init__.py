@@ -1,5 +1,5 @@
 from .anchor_head_multi import AnchorHeadMulti
-from .anchor_head_single import AnchorHeadSingle, DecoupleAnchorHeadSingle,DecoupleHeadThree, DecoupleHeadFour
+from .anchor_head_single import AnchorHeadSingle, DecoupleAnchorHeadSingle,DecoupleHeadThree, DecoupleHeadFour, DecoupleHeadThreeLightweight
 from .anchor_head_template import AnchorHeadTemplate
 from .point_head_box import PointHeadBox
 from .point_head_simple import PointHeadSimple
@@ -17,4 +17,5 @@ __all__ = {
     'DecoupleHeadThree': DecoupleHeadThree,
     'DecoupleHeadFour': DecoupleHeadFour,
     'CenterHead': CenterHead,
+    'DecoupleHeadThreeLightweight': DecoupleHeadThreeLightweight
 }

@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from ...utils import box_coder_utils, common_utils, loss_utils
+from ...ops.iou3d_nms import iou3d_nms_utils 
 from .target_assigner.anchor_generator import AnchorGenerator
 from .target_assigner.atss_target_assigner import ATSSTargetAssigner
 from .target_assigner.axis_aligned_target_assigner import AxisAlignedTargetAssigner
@@ -158,11 +159,25 @@ class AnchorHeadTemplate(nn.Module):
             dir_cls_targets = dir_targets
         return dir_cls_targets
 
+    def get_box_odiou_reg_layer_loss(self):
+        gt_boxes   = self.forward_ret_dict['gt_boxes']
+        gt_boxes   = gt_boxes[:, :, 1:]
+        batch_box_preds = self.forward_ret_dict['batch_box_preds']
+        iou_pred_ground_sum = 0
+        for i in range(gt_boxes.shape[0]):
+            iou_pred_ground = iou3d_nms_utils.boxes_iou3d_gpu(batch_box_preds[i], gt_boxes[i])
+            iou_pred_ground_sum += (1 - iou_pred_ground[iou_pred_ground > 0.6]).sum()
+        return iou_pred_ground_sum
+        
+
+
+
     def get_box_reg_layer_loss(self):
         box_preds = self.forward_ret_dict['box_preds']
         box_dir_cls_preds = self.forward_ret_dict.get('dir_cls_preds', None)
         box_reg_targets = self.forward_ret_dict['box_reg_targets']
         box_cls_labels = self.forward_ret_dict['box_cls_labels']
+
         batch_size = int(box_preds.shape[0])
 
         positives = box_cls_labels > 0
@@ -215,8 +230,9 @@ class AnchorHeadTemplate(nn.Module):
     def get_loss(self):
         cls_loss, tb_dict = self.get_cls_layer_loss()
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
+        odiou_loss = self.get_box_odiou_reg_layer_loss()
         tb_dict.update(tb_dict_box)
-        rpn_loss = cls_loss + box_loss
+        rpn_loss = cls_loss + box_loss + odiou_loss
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict

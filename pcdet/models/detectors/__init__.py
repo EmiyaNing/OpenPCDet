@@ -2,12 +2,13 @@ from .detector3d_template import Detector3DTemplate
 from .PartA2_net import PartA2Net
 from .point_rcnn import PointRCNN
 from .pointpillar import PointPillar
-from .pv_rcnn import PVRCNN
+from .pv_rcnn import PVRCNN, PVRCNN_UN
 from .second_net import SECONDNet
 from .second_net_iou import SECONDNetIoU
 from .caddn import CaDDN
-from .voxel_rcnn import VoxelRCNN
+from .voxel_rcnn import VoxelRCNN, VoxelRCNN_UN
 from .pv_second import PVSECONDNet
+from .centerpoint import CenterPoint
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -20,6 +21,9 @@ __all__ = {
     'CaDDN': CaDDN,
     'VoxelRCNN': VoxelRCNN,
     'PVSECONDNet': PVSECONDNet,
+    'CenterPoint': CenterPoint,
+    'PVRCNN_UN': PVRCNN_UN,
+    'VoxelRCNN_UN': VoxelRCNN_UN,
 }
 
 
