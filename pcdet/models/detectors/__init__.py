@@ -9,6 +9,7 @@ from .caddn import CaDDN
 from .voxel_rcnn import VoxelRCNN, VoxelRCNN_UN
 from .pv_second import PVSECONDNet
 from .centerpoint import CenterPoint
+from .votr_tsd_net import VoTrRCNN
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -24,6 +25,7 @@ __all__ = {
     'CenterPoint': CenterPoint,
     'PVRCNN_UN': PVRCNN_UN,
     'VoxelRCNN_UN': VoxelRCNN_UN,
+    'VoTrRCNN': VoTrRCNN,
 }
 
 

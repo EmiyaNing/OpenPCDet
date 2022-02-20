@@ -177,7 +177,6 @@ class AnchorHeadTemplate(nn.Module):
         box_dir_cls_preds = self.forward_ret_dict.get('dir_cls_preds', None)
         box_reg_targets = self.forward_ret_dict['box_reg_targets']
         box_cls_labels = self.forward_ret_dict['box_cls_labels']
-
         batch_size = int(box_preds.shape[0])
 
         positives = box_cls_labels > 0
@@ -230,9 +229,8 @@ class AnchorHeadTemplate(nn.Module):
     def get_loss(self):
         cls_loss, tb_dict = self.get_cls_layer_loss()
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
-        odiou_loss = self.get_box_odiou_reg_layer_loss()
         tb_dict.update(tb_dict_box)
-        rpn_loss = cls_loss + box_loss + odiou_loss
+        rpn_loss = cls_loss + box_loss
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict

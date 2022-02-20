@@ -44,14 +44,7 @@ MODEL:
 
 # Maybe we need to add bev branch config code in here
     BACKBONE_2D:
-        NAME: TransSwinFAV2
-
-        #NAME: TransBEVBackbone
-        DEPTHWISE: True
-        CONV_ACTION: silu
-        NUM_HEADS: 4
-        DROP_RATE: 0.1
-        ACT: gelu
+        NAME: Trans_Coor_Swin_Net
         NUM_BEV_FEATURES: 256
 
 
@@ -96,6 +89,7 @@ MODEL:
                 'unmatched_threshold': 0.35
             }
         ]
+
 
         TARGET_ASSIGNER_CONFIG:
             NAME: AxisAlignedTargetAssigner

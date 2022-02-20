@@ -50,3 +50,15 @@ def model_fn_decorator():
         return ModelReturn(loss, tb_dict, disp_dict)
 
     return model_func
+
+
+def teacher_model_fn_decorator():
+    ModelReturn = namedtuple('TeacherReturn', ['predict_dict', 'recall_dict'])
+
+    def model_func(model, batch_dict):
+        load_data_to_gpu(batch_dict)
+        predicts, recall_dict = model(batch_dict)
+
+        return ModelReturn(predicts, recall_dict)
+
+    return model_func
