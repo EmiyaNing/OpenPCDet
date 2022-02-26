@@ -65,10 +65,14 @@ def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, t
         batch['teacher_box'] = torch.cat([pad_boxes, pad_labels], dim=-1)
         batch_box_preds = [dict['teacher_box_preds'].unsqueeze(0) for dict in predict_dicts]
         batch_cls_preds = [dict['teacher_cls_preds'].unsqueeze(0) for dict in predict_dicts]
+        batch_teacher_feature = [dict['teacher_feature'].unsqueeze(0) for dict in predict_dicts]
         teacher_box_preds = torch.cat(batch_box_preds, dim=0)
         teacher_cls_preds = torch.cat(batch_cls_preds, dim=0)
+        teacher_feature   = torch.cat(batch_teacher_feature, dim=0)
         batch['teacher_cls_preds'] = teacher_cls_preds
         batch['teacher_box_preds'] = teacher_box_preds
+        batch['teacher_feature'] = teacher_feature
+        
 
         # get knowledge distillation loss...
         loss, tb_dict, disp_dict = model_func(model, batch)

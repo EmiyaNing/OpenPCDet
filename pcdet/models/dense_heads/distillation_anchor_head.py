@@ -57,6 +57,8 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
             self.num_anchors_per_location * self.model_cfg.NUM_DIR_BINS,
             kernel_size=1
         )
+        sigma = torch.randn(2, requires_grad=True)
+        self.sigma = nn.Parameter(sigma)
         self.knowledge_forward_rect = {}
         self.init_weights()
 
@@ -151,6 +153,18 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         }
         return cls_loss, tb_dict
 
+    def get_hint_loss(self):
+        cost_function   = nn.MSELoss()
+        student_feature = self.forward_ret_dict['student_feature']
+        teacher_feature = self.knowledge_forward_rect['teacher_feature']
+        fea_loss = cost_function(student_feature, teacher_feature)
+        tb_dict = {
+            'rpn_loss_feature': fea_loss.item()
+        }
+        return fea_loss, tb_dict
+
+
+
     def get_loss(self):
         cls_loss, tb_dict = self.get_cls_layer_loss()
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
@@ -158,7 +172,9 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         kd_cls_loss, tb_dict_cls_teach = self.get_kd_cls_loss()
         kd_loss = kd_reg_loss + kd_cls_loss
         tb_dict.update(tb_dict_box)
-        rpn_loss = cls_loss + box_loss + self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_weight']*kd_loss
+        grund_rpn_loss = cls_loss + box_loss
+        rpn_loss = kd_loss / (2 * self.sigma[0] ** 2) + grund_rpn_loss / (2 * self.sigma[1] ** 2) \
+                   + torch.log(1 + self.sigma[0]**2) + torch.log(1 + self.sigma[1]**2)
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict
@@ -180,6 +196,8 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         self.forward_ret_dict['cls_preds'] = cls_preds
         self.forward_ret_dict['box_preds'] = box_preds
         self.forward_ret_dict['gt_boxes'] = data_dict['gt_boxes']
+        self.forward_ret_dict['student_feature'] = spatial_features_2d
+        self.knowledge_forward_rect['teacher_feature'] = data_dict['teacher_feature']
 
         if self.conv_dir_cls is not None:
             dir_cls_preds = self.conv_dir_cls(reg_temp)

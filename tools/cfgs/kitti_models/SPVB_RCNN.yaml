@@ -30,7 +30,8 @@ DATA_CONFIG:
               WORLD_SCALE_RANGE: [0.95, 1.05]
 
 MODEL:
-    NAME: VoxelRCNN
+    #NAME: VoxelRCNN
+    NAME: VoxelRCNN_UN
 
     VFE:
         NAME: MeanVFE
