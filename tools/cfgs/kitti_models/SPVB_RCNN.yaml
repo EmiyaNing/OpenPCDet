@@ -46,13 +46,6 @@ MODEL:
 # Maybe we need to add bev branch config code in here
     BACKBONE_2D:
         NAME: Trans_Coor_Swin_Net
-
-        #NAME: TransBEVBackbone
-        DEPTHWISE: True
-        CONV_ACTION: silu
-        NUM_HEADS: 4
-        DROP_RATE: 0.1
-        ACT: gelu
         NUM_BEV_FEATURES: 256
 
 
