@@ -154,10 +154,17 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         return cls_loss, tb_dict
 
     def get_hint_loss(self):
-        cost_function   = nn.MSELoss()
+        '''
+            Reference the NeuroIPS 2020 Richness Feature Knowledge Distillation...
+        '''
+        #cost_function   = nn.MSELoss()
+        cost_function   = nn.KLDivLoss(reduction='batchmean')
         student_feature = self.forward_ret_dict['student_feature']
         teacher_feature = self.knowledge_forward_rect['teacher_feature']
+        teacher_mask    = self.knowledge_forward_rect['teacher_cls_preds']
+        teacher_rich_feature = teacher_mask * teacher_feature
         fea_loss = cost_function(student_feature, teacher_feature)
+        fea_loss = fea_loss / student_feature.shape[0]
         tb_dict = {
             'rpn_loss_feature': fea_loss.item()
         }
@@ -197,7 +204,8 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         self.forward_ret_dict['box_preds'] = box_preds
         self.forward_ret_dict['gt_boxes'] = data_dict['gt_boxes']
         self.forward_ret_dict['student_feature'] = spatial_features_2d
-        self.knowledge_forward_rect['teacher_feature'] = data_dict['teacher_feature']
+        self.knowledge_forward_rect['teacher_feature']  = data_dict['teacher_feature']
+        self.knowledge_forward_rect['teacher_cls_pred'] = data_dict['teacher_cls_preds'] 
 
         if self.conv_dir_cls is not None:
             dir_cls_preds = self.conv_dir_cls(reg_temp)

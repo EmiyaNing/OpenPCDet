@@ -53,14 +53,15 @@ class RoIHeadTemplate(nn.Module):
                 cls_preds_normalized: indicate whether batch_cls_preds is normalized
                 batch_index: optional (N1+N2+...)
             nms_config:
-
         Returns:
             batch_dict:
                 rois: (B, num_rois, 7+C)
                 roi_scores: (B, num_rois)
                 roi_labels: (B, num_rois)
-
         """
+        if batch_dict.get('rois', None) is not None:
+            return batch_dict
+            
         batch_size = batch_dict['batch_size']
         batch_box_preds = batch_dict['batch_box_preds']
         batch_cls_preds = batch_dict['batch_cls_preds']
@@ -234,9 +235,7 @@ class RoIHeadTemplate(nn.Module):
             rois: (B, N, 7)
             cls_preds: (BN, num_class)
             box_preds: (BN, code_size)
-
         Returns:
-
         """
         code_size = self.box_coder.code_size
         # batch_cls_preds: (B, N, num_class or 1)
