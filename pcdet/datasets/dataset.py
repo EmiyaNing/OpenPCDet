@@ -31,7 +31,8 @@ class DatasetTemplate(torch_data.Dataset):
             self.root_path, self.dataset_cfg.DATA_AUGMENTOR, self.class_names, logger=self.logger
         ) if self.training else None
         self.data_processor = DataProcessor(
-            self.dataset_cfg.DATA_PROCESSOR, point_cloud_range=self.point_cloud_range, training=self.training
+            self.dataset_cfg.DATA_PROCESSOR, point_cloud_range=self.point_cloud_range,
+            training=self.training, num_point_features=self.point_feature_encoder.num_point_features
         )
 
         self.grid_size = self.data_processor.grid_size
@@ -61,7 +62,6 @@ class DatasetTemplate(torch_data.Dataset):
         """
         To support a custom dataset, implement this function to receive the predicted results from the model, and then
         transform the unified normative coordinate to your required coordinate, and optionally save them to disk.
-
         Args:
             batch_dict: dict of original data from the dataloader
             pred_dicts: dict of predicted results from the model
@@ -71,7 +71,6 @@ class DatasetTemplate(torch_data.Dataset):
             class_names:
             output_path: if it is not None, save the results to this path
         Returns:
-
         """
 
     def merge_all_iters_to_one_epoch(self, merge=True, epochs=None):
@@ -89,12 +88,9 @@ class DatasetTemplate(torch_data.Dataset):
         To support a custom dataset, implement this function to load the raw data (and labels), then transform them to
         the unified normative coordinate and call the function self.prepare_data() to process the data and send them
         to the model.
-
         Args:
             index:
-
         Returns:
-
         """
         raise NotImplementedError
 
@@ -106,7 +102,6 @@ class DatasetTemplate(torch_data.Dataset):
                 gt_boxes: optional, (N, 7 + C) [x, y, z, dx, dy, dz, heading, ...]
                 gt_names: optional, (N), string
                 ...
-
         Returns:
             data_dict:
                 frame_id: string
@@ -204,7 +199,7 @@ class DatasetTemplate(torch_data.Dataset):
                         pad_w = common_utils.get_pad_params(desired_size=max_w, cur_size=image.shape[1])
                         pad_width = (pad_h, pad_w)
                         # Pad with nan, to be replaced later in the pipeline.
-                        pad_value = 0
+                        pad_value = np.nan
 
                         if key == "images":
                             pad_width = (pad_h, pad_w, (0, 0))
@@ -217,12 +212,6 @@ class DatasetTemplate(torch_data.Dataset):
                                            constant_values=pad_value)
 
                         images.append(image_pad)
-                    ret[key] = np.stack(images, axis=0)
-                elif key == "bev":
-                    images = []
-                    for image in val:
-                        #print(image.shape)
-                        images.append(image)
                     ret[key] = np.stack(images, axis=0)
                 else:
                     ret[key] = np.stack(val, axis=0)

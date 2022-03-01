@@ -110,20 +110,23 @@ class GID_AnchorHeadSingle(AnchorHeadTemplate):
                 teacher_box_filter = teacher_box[i][teacher_mask]
                 # See how many box will be remain....
                 box_loss = self.nn_distance(student_box_filter, teacher_box_filter)
-                cls_loss = self.reg_loss_func(student_cls_filter, teacher_box_filter)
+                cls_loss = self.reg_loss_func(student_cls_filter, teacher_cls_filter)
 
 
 
 
-    def get_loss(self):
+    def get_loss(self, is_ema_teacher=False):
         cls_loss, tb_dict = self.get_cls_layer_loss()
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
         self.consistency_loss()
-        #kd_reg_loss, tb_dict_reg_teach = self.get_kd_reg_loss()
-        #kd_cls_loss, tb_dict_cls_teach = self.get_kd_cls_loss()
-        #kd_loss = kd_reg_loss + kd_cls_loss
+        if is_ema_teacher:
+            kd_reg_loss, tb_dict_reg_teach = self.get_kd_reg_loss()
+            kd_cls_loss, tb_dict_cls_teach = self.get_kd_cls_loss()
+            kd_loss = kd_reg_loss + kd_cls_loss
+            rpn_loss = cls_loss + box_loss + kd_loss
+        else:
+            rpn_loss = cls_loss + box_loss
         tb_dict.update(tb_dict_box)
-        rpn_loss = cls_loss + box_loss
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict
@@ -175,8 +178,8 @@ class GID_AnchorHeadSingle(AnchorHeadTemplate):
             self.forward_ret_dict['batch_cls_preds'] = batch_cls_preds
             self.forward_ret_dict['batch_box_preds'] = batch_box_preds
             if self.training:
-                self.knowledge_forward_rect['batch_cls_preds'] = data_dict['teacher_cls_preds']
-                self.knowledge_forward_rect['batch_box_preds'] = data_dict['teacher_box_preds']
+                self.knowledge_forward_rect['batch_cls_preds'] = data_dict['ema_cls_preds']
+                self.knowledge_forward_rect['batch_box_preds'] = data_dict['ema_box_preds']
             data_dict['cls_preds_normalized'] = False
 
         return data_dict

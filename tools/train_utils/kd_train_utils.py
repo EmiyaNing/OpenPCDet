@@ -24,6 +24,76 @@ def compact_batch(tensor_list):
     paded_tensor = torch.cat(pad_tensor_list, dim=0)
     return paded_tensor
 
+def update_ema_variables(model, ema_model, global_step):
+    alpha = min(1 - 1 / (global_step + 1), 0.999)
+    for ema_param, param in zip(ema_model.parameters(), model.parameters()):
+        ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
+
+
+def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
+                         rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False):
+    if total_it_each_epoch == len(train_loader):
+        dataloader_iter = iter(train_loader)
+
+    if rank == 0:
+        pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
+
+    for cur_it in range(total_it_each_epoch):
+        try:
+            batch = next(dataloader_iter)
+        except StopIteration:
+            dataloader_iter = iter(train_loader)
+            batch = next(dataloader_iter)
+            print('new iters')
+
+        lr_scheduler.step(accumulated_iter)
+
+        try:
+            cur_lr = float(optimizer.lr)
+        except:
+            cur_lr = optimizer.param_groups[0]['lr']
+
+        if tb_log is not None:
+            tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+
+        model.train()
+        model_ema.train()
+        optimizer.zero_grad()
+        # ema_model forward........
+        batch['is_ema'] = True
+        ema_dicts = model_func(model, batch)
+        batch['is_ema'] = False        
+        batch['ema_cls_preds'] = ema_dicts['ema_cls_preds']
+        batch['ema_box_preds'] = ema_dicts['ema_box_preds']
+        batch['ema_features']  = ema_dicts['ema_feature']
+        # get knowledge distillation loss...
+        loss, tb_dict, disp_dict = model_func(model, batch)
+
+        loss.backward()
+        clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
+        optimizer.step()
+
+        # Update the ema_models...
+        update_ema_variables(model, model_ema, accumulated_iter)
+
+        accumulated_iter += 1
+        disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
+
+        # log to console and tensorboard
+        if rank == 0:
+            pbar.update()
+            pbar.set_postfix(dict(total_it=accumulated_iter))
+            tbar.set_postfix(disp_dict)
+            tbar.refresh()
+
+            if tb_log is not None:
+                tb_log.add_scalar('train/loss', loss, accumulated_iter)
+                tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+                for key, val in tb_dict.items():
+                    tb_log.add_scalar('train/' + key, val, accumulated_iter)
+    if rank == 0:
+        pbar.close()
+    return accumulated_iter
 
 
 def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator, lr_scheduler, accumulated_iter, optim_cfg,
