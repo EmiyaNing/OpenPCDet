@@ -133,8 +133,8 @@ def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, t
         pad_boxes  = compact_batch(boxes)
         pad_labels = compact_batch(labels)
         batch['teacher_box'] = torch.cat([pad_boxes, pad_labels], dim=-1)
-        batch_box_preds = [dict['teacher_box_preds'].unsqueeze(0) for dict in predict_dicts]
-        batch_cls_preds = [dict['teacher_cls_preds'].unsqueeze(0) for dict in predict_dicts]
+        batch_box_preds = [dict['batch_box_preds'].unsqueeze(0) for dict in predict_dicts]
+        batch_cls_preds = [dict['batch_cls_preds'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_feature = [dict['teacher_feature'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_cls_temp = [dict['teacher_cls_temp'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_reg_temp = [dict['teacher_reg_temp'].unsqueeze(0) for dict in predict_dicts]
