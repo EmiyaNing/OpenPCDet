@@ -135,7 +135,9 @@ class KittiDataset(DatasetTemplate):
             pts_rect:
             img_shape:
             calib:
+
         Returns:
+
         """
         pts_img, pts_rect_depth = calib.rect_to_img(pts_rect)
         val_flag_1 = np.logical_and(pts_img[:, 0] >= 0, pts_img[:, 0] < img_shape[1])
@@ -283,7 +285,9 @@ class KittiDataset(DatasetTemplate):
                 pred_labels: (N), Tensor
             class_names:
             output_path:
+
         Returns:
+
         """
         def get_template_prediction(num_samples):
             ret_dict = {
@@ -345,6 +349,66 @@ class KittiDataset(DatasetTemplate):
                                  single_pred_dict['score'][idx]), file=f)
 
         return annos
+
+    def removePoints(self, PointCloud, BoundaryCond):
+        # Boundary condition
+        minX = BoundaryCond['minX']
+        maxX = BoundaryCond['maxX']
+        minY = BoundaryCond['minY']
+        maxY = BoundaryCond['maxY']
+        minZ = BoundaryCond['minZ']
+        maxZ = BoundaryCond['maxZ']
+
+        # Remove the point out of range x,y,z
+        mask = np.where((PointCloud[:, 0] >= minX) & (PointCloud[:, 0] <= maxX) & (PointCloud[:, 1] >= minY) & (
+                PointCloud[:, 1] <= maxY) & (PointCloud[:, 2] >= minZ) & (PointCloud[:, 2] <= maxZ))
+        PointCloud = PointCloud[mask]
+
+        PointCloud[:, 2] = PointCloud[:, 2] - minZ
+
+        return PointCloud
+
+    def makeBEVFeature(self, points, boundry, Map_config):
+        points = self.removePoints(points, boundry)
+        discretization_x = Map_config["discretization_x"]
+        discretization_y = Map_config["discretization_y"]
+        Width   = Map_config["BEVHeight"]
+        Height  = Map_config["BEVWidth"]
+
+        PointCloud = np.copy(points)
+        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x) + Height / 2 - 1)
+        PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y))
+
+        indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
+        PointCloud = PointCloud[indices]
+
+        heightMap  = np.zeros((Height, Width))
+        _, indices = np.unique(PointCloud[:, 0:2], axis=0, return_index=True)
+        PointCloud_frac = PointCloud[indices]
+        # some important problem is image coordinate is (y,x), not (x,y)
+        # so here just use x as height, y as width
+        max_height = float(np.abs(boundry['maxZ'] - boundry['minZ']))
+        heightMap[np.int_(PointCloud_frac[:, 0]), np.int_(PointCloud_frac[:, 1])] = PointCloud_frac[:, 2] / max_height
+
+        # Intensity Map & DensityMap
+        intensityMap = np.zeros((Height, Width))
+        densityMap = np.zeros((Height, Width))
+
+        _, indices, counts = np.unique(PointCloud[:, 0:2], axis=0, return_index=True, return_counts=True)
+        PointCloud_top = PointCloud[indices]
+
+        normalizedCounts = np.minimum(1.0, np.log(counts + 1) / np.log(64))
+
+        intensityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = PointCloud_top[:, 3]
+        densityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = normalizedCounts
+
+        RGB_Map = np.zeros((3, Height, Width))
+        RGB_Map[2, :, :] = densityMap[:Height, :Width]  # r_map
+        RGB_Map[1, :, :] = heightMap[:Height, :Width]  # g_map
+        RGB_Map[0, :, :] = intensityMap[:Height, :Width]  # b_map
+        RGB_Map = np.transpose(RGB_Map, [0, 2, 1])
+        return RGB_Map
+
 
     def evaluation(self, det_annos, class_names, **kwargs):
         if 'annos' not in self.kitti_infos[0].keys():
@@ -408,6 +472,22 @@ class KittiDataset(DatasetTemplate):
                 points = points[fov_flag]
             input_dict['points'] = points
 
+        if "bev" in get_item_list:
+            boundry = {}
+            point_range = self.dataset_cfg.POINT_CLOUD_RANGE
+            voxel_step  = self.dataset_cfg.DATA_PROCESSOR[2].VOXEL_SIZE
+            MAP_config  = self.dataset_cfg.BEV_CONFIG
+            boundry["minX"] = point_range[1]
+            boundry["minY"] = point_range[0]
+            boundry["minZ"] = point_range[2]
+            boundry["maxX"] = point_range[4]
+            boundry["maxY"] = point_range[3]
+            boundry["maxZ"] = point_range[5]
+            boundry["step_x"] = voxel_step[1]
+            boundry["step_y"] = voxel_step[0]
+            rgb_map = self.makeBEVFeature(points, boundry, MAP_config)
+            input_dict['bev'] = rgb_map
+
         if "images" in get_item_list:
             input_dict['images'] = self.get_image(sample_idx)
 
@@ -469,7 +549,7 @@ if __name__ == '__main__':
         import yaml
         from pathlib import Path
         from easydict import EasyDict
-        dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[2])))
+        dataset_cfg = EasyDict(yaml.load(open(sys.argv[2])))
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         create_kitti_infos(
             dataset_cfg=dataset_cfg,

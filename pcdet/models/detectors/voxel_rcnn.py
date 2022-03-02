@@ -10,6 +10,9 @@ class VoxelRCNN(Detector3DTemplate):
     def forward(self, batch_dict):
         for cur_module in self.module_list:
             batch_dict = cur_module(batch_dict)
+            if cur_module.__class__.__name__ == 'DecoupleHeadThree':
+                batch_dict['dense_head_cls_preds'] = batch_dict['batch_cls_preds']
+                batch_dict['dense_head_box_preds'] = batch_dict['batch_box_preds']
 
         if self.training:
             loss, tb_dict, disp_dict = self.get_training_loss()
@@ -21,9 +24,11 @@ class VoxelRCNN(Detector3DTemplate):
         else:
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             for i in range(len(pred_dicts)):
-                pred_dicts[i]['batch_cls_preds'] = batch_dict['batch_cls_preds'][i]
-                pred_dicts[i]['batch_box_preds'] = batch_dict['batch_box_preds'][i]
+                pred_dicts[i]['teacher_cls_preds'] = batch_dict['dense_head_cls_preds'][i]
+                pred_dicts[i]['teacher_box_preds'] = batch_dict['dense_head_box_preds'][i]
                 pred_dicts[i]['teacher_feature'] = batch_dict['spatial_features_2d'][i]
+                pred_dicts[i]['teacher_cls_temp'] = batch_dict['kd_cls_temp'][i]
+                pred_dicts[i]['teacher_reg_temp'] = batch_dict['kd_reg_temp'][i]
             return pred_dicts, recall_dicts
 
     def get_training_loss(self):

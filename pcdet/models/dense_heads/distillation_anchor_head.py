@@ -157,19 +157,36 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         '''
             Reference the NeuroIPS 2020 Richness Feature Knowledge Distillation...
         '''
-        #cost_function   = nn.MSELoss()
-        cost_function   = nn.KLDivLoss(reduction='batchmean')
+        cost_function   = nn.MSELoss()
+        #cost_function   = nn.KLDivLoss(reduction='batchmean')
         student_feature = self.forward_ret_dict['student_feature']
         teacher_feature = self.knowledge_forward_rect['teacher_feature']
-        teacher_mask    = self.knowledge_forward_rect['teacher_cls_preds']
-        teacher_rich_feature = teacher_mask * teacher_feature
-        fea_loss = cost_function(student_feature, teacher_feature)
+        teacher_mask    = self.knowledge_forward_rect['teacher_cls_pred']
+       # teacher_mask    = teacher_mask.permute(0, 2, 1).view(teacher_feature.shape[0], 3, teacher_feature.shape[2], teacher_feature.shape[3])
+        teacher_mask = teacher_mask.view(teacher_mask.shape[0], 6, 200, 176, teacher_mask.shape[2])
+        _, mask_filter = torch.max(teacher_mask, dim=1, keepdim=True)
+        _, mask_filter = torch.max(mask_filter, dim=-1)
+        teacher_rich_feature = mask_filter * teacher_feature
+        fea_loss = cost_function(student_feature, teacher_rich_feature)
         fea_loss = fea_loss / student_feature.shape[0]
         tb_dict = {
             'rpn_loss_feature': fea_loss.item()
         }
         return fea_loss, tb_dict
 
+    def get_head_feature_loss(self):
+        cost_function   = nn.MSELoss()
+        student_cls_temp = self.forward_ret_dict['student_cls_temp']
+        student_reg_temp = self.forward_ret_dict['student_reg_temp']
+        teacher_cls_temp = self.knowledge_forward_rect['teacher_head_cls_temp']
+        teacher_reg_temp = self.knowledge_forward_rect['teacher_head_reg_temp']
+        cls_fea_loss     = cost_function(student_cls_temp, teacher_cls_temp)
+        reg_fea_loss     = cost_function(student_reg_temp, teacher_reg_temp)
+        head_loss = cls_fea_loss + reg_fea_loss
+        tb_dict = {
+            'kd_rpn_head_feature_losss': head_loss.item()
+        }
+        return head_loss, tb_dict
 
 
     def get_loss(self):
@@ -177,11 +194,14 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
         kd_reg_loss, tb_dict_reg_teach = self.get_kd_reg_loss()
         kd_cls_loss, tb_dict_cls_teach = self.get_kd_cls_loss()
-        kd_loss = kd_reg_loss + kd_cls_loss
+        kd_fea_loss, tb_dict_fea_teach = self.get_hint_loss()
+        kd_head_fea_loss, tb_dict_head_teach = self.get_head_feature_loss()
+        kd_loss = (kd_reg_loss + kd_cls_loss) * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_boxes_weight'] \
+                    + kd_fea_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_fea_weight'] + \
+                    kd_head_fea_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_head_weight']
         tb_dict.update(tb_dict_box)
         grund_rpn_loss = cls_loss + box_loss
-        rpn_loss = kd_loss / (2 * self.sigma[0] ** 2) + grund_rpn_loss / (2 * self.sigma[1] ** 2) \
-                   + torch.log(1 + self.sigma[0]**2) + torch.log(1 + self.sigma[1]**2)
+        rpn_loss = kd_loss + grund_rpn_loss
 
         tb_dict['rpn_loss'] = rpn_loss.item()
         return rpn_loss, tb_dict
@@ -200,12 +220,6 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         cls_preds = cls_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
         box_preds = box_preds.permute(0, 2, 3, 1).contiguous()  # [N, H, W, C]
 
-        self.forward_ret_dict['cls_preds'] = cls_preds
-        self.forward_ret_dict['box_preds'] = box_preds
-        self.forward_ret_dict['gt_boxes'] = data_dict['gt_boxes']
-        self.forward_ret_dict['student_feature'] = spatial_features_2d
-        self.knowledge_forward_rect['teacher_feature']  = data_dict['teacher_feature']
-        self.knowledge_forward_rect['teacher_cls_pred'] = data_dict['teacher_cls_preds'] 
 
         if self.conv_dir_cls is not None:
             dir_cls_preds = self.conv_dir_cls(reg_temp)
@@ -224,7 +238,17 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
             teacher_dict = self.assign_targets(
                 gt_boxes=data_dict['teacher_box']
             )
+            self.forward_ret_dict['cls_preds'] = cls_preds
+            self.forward_ret_dict['box_preds'] = box_preds
+            self.forward_ret_dict['gt_boxes'] = data_dict['gt_boxes']
+            self.forward_ret_dict['student_feature'] = spatial_features_2d
+            self.forward_ret_dict['student_cls_temp'] = cls_temp
+            self.forward_ret_dict['student_reg_temp'] = reg_temp
             self.knowledge_forward_rect.update(teacher_dict)
+            self.knowledge_forward_rect['teacher_feature']  = data_dict['teacher_feature']
+            self.knowledge_forward_rect['teacher_cls_pred'] = data_dict['teacher_cls_preds'] 
+            self.knowledge_forward_rect['teacher_head_cls_temp'] = data_dict['teacher_head_cls']
+            self.knowledge_forward_rect['teacher_head_reg_temp'] = data_dict['teacher_head_reg']
 
         if not self.training or self.predict_boxes_when_training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

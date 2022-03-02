@@ -65,8 +65,8 @@ class DemoDataset(DatasetTemplate):
         Height  = Map_config["BEVWidth"]
 
         PointCloud = np.copy(points)
-        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x)+ Height / 2)
-        PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y))
+        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x) + Width / 2)
+        PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y) + Height / 2)
         indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
         PointCloud = PointCloud[indices]
 
@@ -136,10 +136,10 @@ class DemoDataset(DatasetTemplate):
         boundry["step_y"] = voxel_step[0]
         rgb_map = self.makeBEVFeature(points, boundry, MAP_config)
 
-        '''print_map = np.floor(rgb_map * 255)
+        print_map = np.floor(rgb_map * 255)
         print_map = print_map.astype(np.uint8)
         print_map = print_map.transpose(1, 2, 0)
-        cv2.imshow("bev_image", print_map)'''
+        cv2.imshow("bev_image", print_map)
 
 
 

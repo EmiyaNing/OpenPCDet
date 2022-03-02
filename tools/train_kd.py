@@ -33,6 +33,7 @@ def parse_config():
     parser.add_argument('--cfg_student_file', type=str, default=None, help='specify the student config for training')
     parser.add_argument('--cfg_teacher_file', type=str, default=None, help='specify the teacher config for training')
     parser.add_argument('--teacher_model', type=str, default=None, help='pretrained teacher model')
+    parser.add_argument('--pretrain_student_model', type=str, default=None, help='pretrained student model')
 
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
@@ -149,6 +150,9 @@ def main():
         logger.info("The distillation process need the pretrained teacher models")
         exit()
 
+    if args.pretrain_student_model is not None:
+        model.load_params_from_file(filename=args.pretrain_student_model, to_cpu=dist_train, logger=logger)
+
     if args.ckpt is not None:
         it, start_epoch = model.load_params_with_optimizer(args.ckpt, to_cpu=dist_train, optimizer=optimizer, logger=logger)
         last_epoch = start_epoch + 1
@@ -202,7 +206,7 @@ def main():
     )
 
     logger.info('**********************End training %s/%s(%s)**********************\n\n\n'
-                % (student_cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
+                % (student_cfg.EXP_GROUP_PATH, student_cfg.TAG, args.extra_tag))
 
     logger.info('**********************Start evaluation %s/%s(%s)**********************' %
                 (student_cfg.EXP_GROUP_PATH, student_cfg.TAG, args.extra_tag))
