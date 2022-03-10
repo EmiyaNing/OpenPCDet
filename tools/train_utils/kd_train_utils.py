@@ -3,7 +3,9 @@ import os
 
 import torch
 import tqdm
+import numpy as np
 from torch.nn.utils import clip_grad_norm_
+from pcdet.models import load_data_to_gpu
 
 def compact_batch(tensor_list):
     '''
@@ -30,7 +32,7 @@ def update_ema_variables(model, ema_model, global_step):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
 
 
-def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
+def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, ema_model_func, cur_epoch, lr_scheduler, accumulated_iter, optim_cfg,
                          rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False):
     if total_it_each_epoch == len(train_loader):
         dataloader_iter = iter(train_loader)
@@ -61,13 +63,17 @@ def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, 
         optimizer.zero_grad()
         # ema_model forward........
         batch['is_ema'] = True
-        ema_dicts = model_func(model, batch)
+        ema_dicts = ema_model_func(model_ema, batch)
         batch['is_ema'] = False        
         batch['ema_cls_preds'] = ema_dicts['ema_cls_preds']
         batch['ema_box_preds'] = ema_dicts['ema_box_preds']
+        batch['ema_box_iou']   = ema_dicts['ema_box_iou']
         batch['ema_features']  = ema_dicts['ema_feature']
+        batch['ema_dir_cls_preds'] = ema_dicts['ema_dir_cls_preds']
+        batch['consistency_weight'] = sigmoid_rampup(cur_epoch)
         # get knowledge distillation loss...
         loss, tb_dict, disp_dict = model_func(model, batch)
+
 
         loss.backward()
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
@@ -94,6 +100,12 @@ def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, 
     if rank == 0:
         pbar.close()
     return accumulated_iter
+
+
+def sigmoid_rampup( current_epoch):
+    current = np.clip(current_epoch, 0.0, 15.0)
+    phase = 1.0 - current / 15.0
+    return float(np.exp(-5.0 * phase * phase))
 
 
 def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator, lr_scheduler, accumulated_iter, optim_cfg,
@@ -133,8 +145,8 @@ def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, t
         pad_boxes  = compact_batch(boxes)
         pad_labels = compact_batch(labels)
         batch['teacher_box'] = torch.cat([pad_boxes, pad_labels], dim=-1)
-        batch_box_preds = [dict['batch_box_preds'].unsqueeze(0) for dict in predict_dicts]
-        batch_cls_preds = [dict['batch_cls_preds'].unsqueeze(0) for dict in predict_dicts]
+        batch_box_preds = [dict['teacher_box_preds'].unsqueeze(0) for dict in predict_dicts]
+        batch_cls_preds = [dict['teacher_cls_preds'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_feature = [dict['teacher_feature'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_cls_temp = [dict['teacher_cls_temp'].unsqueeze(0) for dict in predict_dicts]
         batch_teacher_reg_temp = [dict['teacher_reg_temp'].unsqueeze(0) for dict in predict_dicts]
@@ -177,8 +189,10 @@ def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, t
     return accumulated_iter
 
 
+
+
 def train_model_kd(model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator,lr_scheduler, optim_cfg,
-                start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, train_sampler=None,
+                start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, model_ema=None,train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
                 merge_all_iters_to_one_epoch=False):
     accumulated_iter = start_iter
@@ -199,15 +213,27 @@ def train_model_kd(model, teacher_model, optimizer, train_loader, model_func, te
                 cur_scheduler = lr_warmup_scheduler
             else:
                 cur_scheduler = lr_scheduler
-            accumulated_iter = train_one_epoch(
-                model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator,
-                lr_scheduler=cur_scheduler,
-                accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
-                rank=rank, tbar=tbar, tb_log=tb_log,
-                leave_pbar=(cur_epoch + 1 == total_epochs),
-                total_it_each_epoch=total_it_each_epoch,
-                dataloader_iter=dataloader_iter
-            )
+            if model_ema is None:
+                accumulated_iter = train_one_epoch(
+                    model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator,
+                    lr_scheduler=cur_scheduler,
+                    accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
+                    rank=rank, tbar=tbar, tb_log=tb_log,
+                    leave_pbar=(cur_epoch + 1 == total_epochs),
+                    total_it_each_epoch=total_it_each_epoch,
+                    dataloader_iter=dataloader_iter
+                )
+            else:
+                accumulated_iter = train_one_epoch_sess(
+                    model, model_ema, optimizer, train_loader, model_func, teacher_model_fn_decorator,
+                    cur_epoch=cur_epoch,
+                    lr_scheduler=cur_scheduler,
+                    accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
+                    rank=rank, tbar=tbar, tb_log=tb_log,
+                    leave_pbar=(cur_epoch + 1 == total_epochs),
+                    total_it_each_epoch=total_it_each_epoch,
+                    dataloader_iter=dataloader_iter
+                )
 
             # save trained model
             trained_epoch = cur_epoch + 1
@@ -224,6 +250,13 @@ def train_model_kd(model, teacher_model, optimizer, train_loader, model_func, te
                 save_checkpoint(
                     checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
                 )
+                ckpt_ema_name = ckpt_save_dir / ('checkpoint_ema_epoch_%d' % trained_epoch)
+                if model_ema is not None:
+                    save_ema_checkpoint(model, filename=ckpt_ema_name)
+
+
+
+
 
 
 def model_state_to_cpu(model_state):
@@ -260,4 +293,9 @@ def save_checkpoint(state, filename='checkpoint'):
         torch.save({'optimizer_state': optimizer_state}, optimizer_filename)
 
     filename = '{}.pth'.format(filename)
+    torch.save(state, filename)
+
+
+def save_ema_checkpoint(state, filename='checkpoint_ema'):
+    filename =  '{}.pth'.format(filename )
     torch.save(state, filename)

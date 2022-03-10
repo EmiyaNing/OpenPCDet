@@ -62,3 +62,12 @@ def teacher_model_fn_decorator():
         return ModelReturn(predicts, recall_dict)
 
     return model_func
+
+
+
+
+def ema_model_fn_decorator(model, batch_dict):
+    load_data_to_gpu(batch_dict)
+    ema_dict = model(batch_dict)
+
+    return ema_dict

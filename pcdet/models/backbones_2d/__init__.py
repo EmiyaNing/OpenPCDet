@@ -4,6 +4,7 @@ from .darknet import CSPDarknet, CoordTransformer
 from .swin import TransSwinFA,TransSWINNet, TransSWINNetV2, TransSWINFFANet, TransSwinFAV2
 from .poolformer import TransSPFANet, TransSPoolformer, TransSwinBase, Trans_Coor_Swin_Net
 from .WTSSA import CoorSWINNet
+from .SCConv import SCConv2D, SCConv2DV2
 
 __all__ = {
     'BaseBEVBackbone': BaseBEVBackbone,
@@ -23,4 +24,6 @@ __all__ = {
     'TransSwinBase': TransSwinBase,
     'Trans_Coor_Swin_Net': Trans_Coor_Swin_Net,
     'CoorSWINNet': CoorSWINNet,
+    'SCConv2D': SCConv2D,
+    'SCConv2DV2':SCConv2DV2,
 }

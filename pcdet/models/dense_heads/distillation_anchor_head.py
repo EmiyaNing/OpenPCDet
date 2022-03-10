@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from .anchor_head_template import AnchorHeadTemplate
 
@@ -95,7 +96,7 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
         teach_loss = loc_loss
         tb_dict = {
-            'rpn_loss_loc': loc_loss.item()
+            'rpn_kd_loss_loc': loc_loss.item()
         }
 
         if box_dir_cls_preds is not None:
@@ -112,7 +113,7 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
             dir_loss = dir_loss.sum() / batch_size
             dir_loss = dir_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['dir_weight']
             teach_loss += dir_loss
-            tb_dict['rpn_loss_dir'] = dir_loss.item()
+            tb_dict['rpn_kd_loss_dir'] = dir_loss.item()
 
         return teach_loss, tb_dict
 
@@ -149,7 +150,7 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
 
         cls_loss = cls_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
         tb_dict = {
-            'rpn_loss_cls': cls_loss.item()
+            'rpn_kd_loss_cls': cls_loss.item()
         }
         return cls_loss, tb_dict
 
@@ -170,9 +171,85 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         fea_loss = cost_function(student_feature, teacher_rich_feature)
         fea_loss = fea_loss / student_feature.shape[0]
         tb_dict = {
-            'rpn_loss_feature': fea_loss.item()
+            'rpn_spatial_feature_loss_v1': fea_loss.item()
         }
         return fea_loss, tb_dict
+
+
+
+    def get_hint_loss_v2(self):
+        '''
+            Reference the NeuroIPS 2020 Richness Feature Knowledge Distillation...
+            Using the diversity of cls pred to get the richness feature, we called them Diversity Feature.....
+        '''
+        cost_function   = nn.MSELoss()
+        #cost_function   = nn.KLDivLoss(reduction='batchmean')
+        student_feature = self.forward_ret_dict['student_feature']
+        student_mask    = F.sigmoid(self.forward_ret_dict['cls_preds'])
+        teacher_feature = self.knowledge_forward_rect['teacher_feature']
+        teacher_mask    = F.sigmoid(self.knowledge_forward_rect['teacher_cls_pred'])
+        teacher_mask = teacher_mask.view(teacher_mask.shape[0], self.num_anchors_per_location, 200, 176, teacher_mask.shape[2])
+        student_mask = student_mask.view(student_mask.shape[0], 200, 176, self.num_anchors_per_location, -1)
+        mask_filter_teacher, _ = torch.max(teacher_mask, dim=1, keepdim=True)
+        mask_filter_teacher, _ = torch.max(mask_filter_teacher, dim=-1)
+        mask_filter_student, _ = torch.max(student_mask, dim=-2, keepdim=True)
+        mask_filter_student = mask_filter_student.permute(0, 3, 1, 2, 4)
+        mask_filter_student, _ = torch.max(mask_filter_student, dim=-1)
+        mask_filter = torch.abs(mask_filter_teacher - mask_filter_student)
+        teacher_rich_feature = mask_filter * teacher_feature
+        fea_loss = cost_function(student_feature, teacher_rich_feature)
+        fea_loss = fea_loss / student_feature.shape[0]
+        tb_dict = {
+            'rpn_spatial_feature_loss_v2': fea_loss.item()
+        }
+        return fea_loss, tb_dict
+
+
+    def get_hint_loss_v3(self):
+        '''
+            Reference the NeuroIPS 2020 Richness Feature Knowledge Distillation...
+            Using the diversity of cls pred to get the richness feature, we called them Diversity Feature.....
+        '''
+        cost_function   = nn.MSELoss()
+        #cost_function   = nn.KLDivLoss(reduction='batchmean')
+        student_feature = self.forward_ret_dict['student_feature']
+        student_mask    = F.sigmoid(self.forward_ret_dict['cls_preds'])
+        teacher_feature = self.knowledge_forward_rect['teacher_feature']
+        teacher_mask    = F.sigmoid(self.knowledge_forward_rect['teacher_cls_pred'])
+        teacher_mask = teacher_mask.view(teacher_mask.shape[0], self.num_anchors_per_location, 200, 176, teacher_mask.shape[2])
+        student_mask = student_mask.view(student_mask.shape[0], 200, 176, self.num_anchors_per_location, -1)
+
+
+        mask_filter_teacher, _ = torch.max(teacher_mask, dim=1, keepdim=True)
+        mask_filter_teacher, _ = torch.max(mask_filter_teacher, dim=-1)
+        mask_filter_student, _ = torch.max(student_mask, dim=-2, keepdim=True)
+        mask_filter_student = mask_filter_student.permute(0, 3, 1, 2, 4)
+        mask_filter_student, _ = torch.max(mask_filter_student, dim=-1)
+        mask_filter = torch.abs(mask_filter_teacher - mask_filter_student)
+        teacher_div_feature = mask_filter * teacher_feature
+        student_div_feature = mask_filter * student_feature
+
+        student_cls_temp = self.forward_ret_dict['student_cls_temp'] * mask_filter
+        student_reg_temp = self.forward_ret_dict['student_reg_temp'] * mask_filter
+        teacher_cls_temp = self.knowledge_forward_rect['teacher_head_cls_temp'] * mask_filter
+        teacher_reg_temp = self.knowledge_forward_rect['teacher_head_reg_temp'] * mask_filter
+
+        fea_loss = cost_function(student_div_feature, teacher_div_feature)
+        
+        cls_fea_loss = cost_function(student_cls_temp, teacher_cls_temp)
+        reg_fea_loss = cost_function(student_reg_temp, teacher_reg_temp)
+
+        feat_totall_loss = fea_loss + cls_fea_loss + reg_fea_loss
+
+        fea_loss = fea_loss / student_feature.shape[0]
+        tb_dict = {
+            'rpn_spatial_feature_loss_v2': fea_loss.item(),
+            'rpn_cls_fea_loss': cls_fea_loss.item(),
+            'rpn_reg_fea_loss': reg_fea_loss.item(),
+            'rpn_feat_totall_loss': feat_totall_loss.item()
+        }
+        return fea_loss, tb_dict
+
 
     def get_head_feature_loss(self):
         cost_function   = nn.MSELoss()
@@ -194,12 +271,30 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
         box_loss, tb_dict_box = self.get_box_reg_layer_loss()
         kd_reg_loss, tb_dict_reg_teach = self.get_kd_reg_loss()
         kd_cls_loss, tb_dict_cls_teach = self.get_kd_cls_loss()
-        kd_fea_loss, tb_dict_fea_teach = self.get_hint_loss()
         kd_head_fea_loss, tb_dict_head_teach = self.get_head_feature_loss()
-        kd_loss = (kd_reg_loss + kd_cls_loss) * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_boxes_weight'] \
-                    + kd_fea_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_fea_weight'] + \
+        if self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS.get('kd_fea_weight_v2', None) is not None:
+            kd_fea_loss, tb_dict_fea_teach = self.get_hint_loss_v2()
+            kd_fea_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_fea_weight_v2']
+            kd_loss = (kd_reg_loss + kd_cls_loss) * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_boxes_weight'] \
+                    + kd_fea_loss * kd_fea_weight + \
                     kd_head_fea_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_head_weight']
+        elif self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS.get('kd_fea_weight_v1', None) is not None:
+            kd_fea_loss, tb_dict_fea_teach = self.get_hint_loss()
+            kd_fea_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_fea_weight']
+            kd_loss = (kd_reg_loss + kd_cls_loss) * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_boxes_weight'] \
+                    + kd_fea_loss * kd_fea_weight + \
+                    kd_head_fea_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_head_weight']
+        else:
+            kd_fea_loss, tb_dict_fea_teach = self.get_hint_loss_v3()
+            kd_fea_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_fea_weight_v3']
+            kd_loss = (kd_reg_loss + kd_cls_loss) * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['kd_boxes_weight'] \
+                        + kd_fea_loss * kd_fea_weight
+
+        tb_dict.update(tb_dict_head_teach)
         tb_dict.update(tb_dict_box)
+        tb_dict.update(tb_dict_reg_teach)
+        tb_dict.update(tb_dict_cls_teach)
+        tb_dict.update(tb_dict_fea_teach)
         grund_rpn_loss = cls_loss + box_loss
         rpn_loss = kd_loss + grund_rpn_loss
 

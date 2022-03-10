@@ -7,6 +7,8 @@ from .point_intra_part_head import PointIntraPartOffsetHead
 from .center_head import CenterHead
 from .distillation_anchor_head import KD_AnchorHeadSingle
 from .GID_anchor_head import GID_AnchorHeadSingle
+from .GID_anchor_headv2 import SESSD_Head
+from .iou_head import ODiou_Head
 
 __all__ = {
     'AnchorHeadTemplate': AnchorHeadTemplate,
@@ -22,4 +24,6 @@ __all__ = {
     'DecoupleHeadThreeLightweight': DecoupleHeadThreeLightweight,
     'KD_AnchorHeadSingle': KD_AnchorHeadSingle,
     'GID_AnchorHeadSingle': GID_AnchorHeadSingle,
+    'SESSD_Head': SESSD_Head,
+    'ODiou_Head': ODiou_Head,
 }

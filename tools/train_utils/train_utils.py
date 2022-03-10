@@ -35,6 +35,7 @@ def train_one_epoch(model, optimizer, train_loader, model_func, lr_scheduler, ac
         model.train()
         optimizer.zero_grad()
 
+        batch['is_ema'] = False
         loss, tb_dict, disp_dict = model_func(model, batch)
 
         loss.backward()

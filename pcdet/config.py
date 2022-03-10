@@ -74,7 +74,7 @@ def cfg_from_yaml_file(cfg_file, config):
             new_config = yaml.load(f, Loader=yaml.FullLoader)
         except:
             new_config = yaml.load(f)
-
+        
         merge_new_config(config=config, new_config=new_config)
 
     return config
