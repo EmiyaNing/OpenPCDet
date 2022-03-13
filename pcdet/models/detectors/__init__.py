@@ -11,6 +11,7 @@ from .pv_second import PVSECONDNet
 from .centerpoint import CenterPoint
 from .votr_tsd_net import VoTrRCNN
 from .se_second import SESSD
+from .voxel_teacher import VoxelTEACHRCNN
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -28,6 +29,7 @@ __all__ = {
     'VoxelRCNN_UN': VoxelRCNN_UN,
     'VoTrRCNN': VoTrRCNN,
     'SESSD': SESSD,
+    'VoxelTEACHRCNN': VoxelTEACHRCNN,
 }
 
 

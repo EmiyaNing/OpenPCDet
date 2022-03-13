@@ -8,6 +8,30 @@ from ..model_utils import centernet_utils
 from ...utils import loss_utils
 
 
+class AverageMeter():
+    """ Meter for monitoring losses"""
+    def __init__(self):
+        self.avg = 0
+        self.sum = 0
+        self.cnt = 0
+        self.val = 0
+        self.reset()
+
+    def reset(self):
+        """reset all values to zeros"""
+        self.avg = 0
+        self.sum = 0
+        self.cnt = 0
+        self.val = 0
+
+    def update(self, val, n=1):
+        """update avg by val and n, where val is the avg of n values"""
+        self.val = val
+        self.sum += val * n
+        self.cnt += n
+        self.avg = self.sum / self.cnt
+
+
 class SeparateHead(nn.Module):
     def __init__(self, input_channels, sep_head_dict, init_bias=-2.19, use_bias=False):
         super().__init__()
@@ -95,6 +119,9 @@ class CenterHead(nn.Module):
         self.predict_boxes_when_training = predict_boxes_when_training
         self.forward_ret_dict = {}
         self.build_losses()
+        self.heatmap_meter = AverageMeter()
+        self.locloss_meter = AverageMeter()
+        self.trainloss_meter = AverageMeter()
 
     def build_losses(self):
         self.add_module('hm_loss_func', loss_utils.FocalLossCenterNet())
@@ -229,6 +256,7 @@ class CenterHead(nn.Module):
         for idx, pred_dict in enumerate(pred_dicts):
             pred_dict['hm'] = self.sigmoid(pred_dict['hm'])
             hm_loss = self.hm_loss_func(pred_dict['hm'], target_dicts['heatmaps'][idx])
+            hm_loss *= self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
 
             target_boxes = target_dicts['target_boxes'][idx]
             pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.HEAD_ORDER], dim=1)
@@ -240,8 +268,15 @@ class CenterHead(nn.Module):
             loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
 
             loss += hm_loss + loc_loss
+            self.heatmap_meter.update(hm_loss.item())
+            self.locloss_meter.update(loc_loss.item())
+            self.trainloss_meter.update(loss.item())
             tb_dict['hm_loss_head_%d' % idx] = hm_loss.item()
             tb_dict['loc_loss_head_%d' % idx] = loc_loss.item()
+            tb_dict['hm_mean_loss_head_%d' % idx]  = self.heatmap_meter.avg
+            tb_dict['loc_mean_loss_head_%d' % idx] = self.locloss_meter.avg
+            tb_dict['rpn_mean_loss_head_%d' % idx] = self.trainloss_meter.avg 
+
 
         tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
@@ -345,7 +380,7 @@ class CenterHead(nn.Module):
                 data_dict['roi_scores'] = roi_scores
                 data_dict['roi_labels'] = roi_labels
                 data_dict['has_class_labels'] = True
-            else:
+            if not self.training:
                 data_dict['final_box_dicts'] = pred_dicts
 
         return data_dict

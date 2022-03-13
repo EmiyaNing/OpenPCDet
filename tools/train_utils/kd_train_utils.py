@@ -76,11 +76,11 @@ def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, 
 
 
         loss.backward()
+        update_ema_variables(model, model_ema, accumulated_iter)
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
         optimizer.step()
 
         # Update the ema_models...
-        update_ema_variables(model, model_ema, accumulated_iter)
 
         accumulated_iter += 1
         disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
@@ -189,6 +189,72 @@ def train_one_epoch(model, teacher_model, optimizer, train_loader, model_func, t
     return accumulated_iter
 
 
+def train_one_epoch_v2(model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator, lr_scheduler, accumulated_iter, optim_cfg,
+                    rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False):
+    if total_it_each_epoch == len(train_loader):
+        dataloader_iter = iter(train_loader)
+
+    if rank == 0:
+        pbar = tqdm.tqdm(total=total_it_each_epoch, leave=leave_pbar, desc='train', dynamic_ncols=True)
+
+    for cur_it in range(total_it_each_epoch):
+        try:
+            batch = next(dataloader_iter)
+        except StopIteration:
+            dataloader_iter = iter(train_loader)
+            batch = next(dataloader_iter)
+            print('new iters')
+
+        lr_scheduler.step(accumulated_iter)
+
+        try:
+            cur_lr = float(optimizer.lr)
+        except:
+            cur_lr = optimizer.param_groups[0]['lr']
+
+        if tb_log is not None:
+            tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+
+        model.train()
+        teacher_model.eval()
+        optimizer.zero_grad()
+        # get teacher predict result...
+        # use teacher predict as hard label to caculate the loss....
+        predict_dicts, recall_dicts, teacher_dict = teacher_model_fn_decorator(teacher_model, batch)
+        boxes  = [dict['pred_boxes'].unsqueeze(0) for dict in predict_dicts]
+        labels = [dict['pred_labels'].unsqueeze(-1).unsqueeze(0) for dict in predict_dicts]
+        pad_boxes  = compact_batch(boxes)
+        pad_labels = compact_batch(labels)
+        batch['teacher_box'] = torch.cat([pad_boxes, pad_labels], dim=-1)
+        batch.update(teacher_dict)
+        
+
+        # get knowledge distillation loss...
+        loss, tb_dict, disp_dict = model_func(model, batch)
+
+        loss.backward()
+        clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
+        optimizer.step()
+
+        accumulated_iter += 1
+        disp_dict.update({'loss': loss.item(), 'lr': cur_lr})
+
+        # log to console and tensorboard
+        if rank == 0:
+            pbar.update()
+            pbar.set_postfix(dict(total_it=accumulated_iter))
+            tbar.set_postfix(disp_dict)
+            tbar.refresh()
+
+            if tb_log is not None:
+                tb_log.add_scalar('train/loss', loss, accumulated_iter)
+                tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
+                for key, val in tb_dict.items():
+                    tb_log.add_scalar('train/' + key, val, accumulated_iter)
+    if rank == 0:
+        pbar.close()
+    return accumulated_iter
+
 
 
 def train_model_kd(model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator,lr_scheduler, optim_cfg,
@@ -214,7 +280,7 @@ def train_model_kd(model, teacher_model, optimizer, train_loader, model_func, te
             else:
                 cur_scheduler = lr_scheduler
             if model_ema is None:
-                accumulated_iter = train_one_epoch(
+                accumulated_iter = train_one_epoch_v2(
                     model, teacher_model, optimizer, train_loader, model_func, teacher_model_fn_decorator,
                     lr_scheduler=cur_scheduler,
                     accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,

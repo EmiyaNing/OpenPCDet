@@ -20,10 +20,6 @@ class SECONDNet(Detector3DTemplate):
             return ret_dict, tb_dict, disp_dict
         else:
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
-            if self.model_cfg.DENSE_HEAD.TEACHER is True:
-                for i in range(len(pred_dicts)):
-                    pred_dicts[i]['teacher_cls_preds'] = batch_dict['batch_cls_preds'][i]
-                    pred_dicts[i]['teacher_box_preds'] = batch_dict['batch_box_preds'][i]
             return pred_dicts, recall_dicts
 
     def get_training_loss(self):

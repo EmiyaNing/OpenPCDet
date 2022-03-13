@@ -263,6 +263,7 @@ class DecoupleHeadThree(AnchorHeadTemplate):
             )
             data_dict['batch_cls_preds'] = batch_cls_preds
             data_dict['batch_box_preds'] = batch_box_preds
+            data_dict['dir_cls_preds']   = dir_cls_preds
             self.forward_ret_dict['batch_box_preds'] = batch_box_preds
             data_dict['kd_cls_temp'] = cls_temp
             data_dict['kd_reg_temp'] = reg_temp
