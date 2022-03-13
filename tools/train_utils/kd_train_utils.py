@@ -77,7 +77,7 @@ def train_one_epoch_sess(model, model_ema, optimizer, train_loader, model_func, 
 
         loss.backward()
         update_ema_variables(model, model_ema, accumulated_iter)
-        clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
+        #clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
         optimizer.step()
 
         # Update the ema_models...
