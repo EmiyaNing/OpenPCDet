@@ -1,12 +1,14 @@
 import pickle
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
 import tqdm
 
-from pcdet.models import load_data_to_gpu
+from pcdet.models import load_data_to_gpu, load_data_to_gpu_tta
 from pcdet.utils import common_utils
+from pcdet.datasets.augmentor.data_augmentor import TTA_Wrapper
 
 
 def statistics_info(cfg, ret_dict, metric, disp_dict):
@@ -19,7 +21,7 @@ def statistics_info(cfg, ret_dict, metric, disp_dict):
         '(%d, %d) / %d' % (metric['recall_roi_%s' % str(min_thresh)], metric['recall_rcnn_%s' % str(min_thresh)], metric['gt_num'])
 
 
-def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, save_to_file=False, result_dir=None):
+def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, tta=False,dist_test=False, save_to_file=False, result_dir=None):
     result_dir.mkdir(parents=True, exist_ok=True)
 
     final_output_dir = result_dir / 'final_result' / 'data'
@@ -52,16 +54,25 @@ def eval_one_epoch(cfg, model, dataloader, epoch_id, logger, dist_test=False, sa
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
-        load_data_to_gpu(batch_dict)
+        if not tta:
+            load_data_to_gpu(batch_dict)
+        else:
+            load_data_to_gpu_tta(batch_dict)
         with torch.no_grad():
             pred_dicts, ret_dict = model(batch_dict)
         disp_dict = {}
 
         statistics_info(cfg, ret_dict, metric, disp_dict)
-        annos = dataset.generate_prediction_dicts(
-            batch_dict, pred_dicts, class_names,
-            output_path=final_output_dir if save_to_file else None
-        )
+        if not tta:
+            annos = dataset.generate_prediction_dicts(
+                batch_dict, pred_dicts, class_names,
+                output_path=final_output_dir if save_to_file else None
+            )
+        else:
+            annos = dataset.generate_prediction_dicts(
+                batch_dict[0], pred_dicts, class_names,
+                output_path=final_output_dir if save_to_file else None
+            )
         det_annos += annos
         if cfg.LOCAL_RANK == 0:
             progress_bar.set_postfix(disp_dict)

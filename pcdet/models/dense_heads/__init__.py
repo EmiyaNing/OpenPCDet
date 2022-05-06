@@ -11,6 +11,9 @@ from .GID_anchor_headv2 import SESSD_Head
 from .iou_head import ODiou_Head
 from .diversity_distillation_head import Diversity_Head
 from .diversity_distillation_headv2 import Diversity_HeadV2
+from .diversity_distillation_headv3 import Diversity_HeadV3
+from .IASSD_head import IASSD_Head
+from .anchor_head_harmony import AnchorHeadHarmony
 
 __all__ = {
     'AnchorHeadTemplate': AnchorHeadTemplate,
@@ -30,4 +33,7 @@ __all__ = {
     'ODiou_Head': ODiou_Head,
     'Diversity_Head': Diversity_Head,
     'Diversity_HeadV2': Diversity_HeadV2,
+    'Diversity_HeadV3': Diversity_HeadV3,
+    'IASSD_Head': IASSD_Head,
+    'AnchorHeadHarmony': AnchorHeadHarmony
 }

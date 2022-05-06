@@ -1,6 +1,7 @@
 from functools import partial
 
 import numpy as np
+import copy
 
 from ...utils import common_utils
 from . import augmentor_utils, database_sampler
@@ -46,12 +47,13 @@ class DataAugmentor(object):
         gt_boxes, points = data_dict['gt_boxes'], data_dict['points']
         for cur_axis in config['ALONG_AXIS_LIST']:
             assert cur_axis in ['x', 'y']
-            gt_boxes, points = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
+            gt_boxes, points, enable = getattr(augmentor_utils, 'random_flip_along_%s' % cur_axis)(
                 gt_boxes, points,
             )
         
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['filp_enable'] = enable
         return data_dict
     
     def random_world_rotation(self, data_dict=None, config=None):
@@ -60,23 +62,25 @@ class DataAugmentor(object):
         rot_range = config['WORLD_ROT_ANGLE']
         if not isinstance(rot_range, list):
             rot_range = [-rot_range, rot_range]
-        gt_boxes, points = augmentor_utils.global_rotation(
+        gt_boxes, points, noise_rotation = augmentor_utils.global_rotation(
             data_dict['gt_boxes'], data_dict['points'], rot_range=rot_range
         )
         
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['rotation_noise'] = noise_rotation
         return data_dict
     
     def random_world_scaling(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_world_scaling, config=config)
-        gt_boxes, points = augmentor_utils.global_scaling(
+        gt_boxes, points, noise_scale = augmentor_utils.global_scaling(
             data_dict['gt_boxes'], data_dict['points'], config['WORLD_SCALE_RANGE']
         )
         
         data_dict['gt_boxes'] = gt_boxes
         data_dict['points'] = points
+        data_dict['scale_noise'] = noise_scale
         return data_dict
     
     def random_image_flip(self, data_dict=None, config=None):
@@ -254,3 +258,20 @@ class DataAugmentor(object):
             
             data_dict.pop('gt_boxes_mask')
         return data_dict
+
+
+class TTA_Wrapper(DataAugmentor):
+    def __init__(self, root_path, augmentor_configs, class_names, logger=None):
+        super().__init__(root_path, augmentor_configs, class_names)
+        print("\n\n\n\n")
+        print(augmentor_configs.AUG_CONFIG_LIST)
+        print("\n\n\n\n")
+
+    def forward(self, data_dict):
+        data_batch_list = [data_dict]
+        for cur_augmentor in self.data_augmentor_queue:
+            origin_data     = copy.deepcopy(data_dict)
+            new_data_dict   = cur_augmentor(data_dict=origin_data)
+            data_batch_list.append(new_data_dict)
+
+        return data_batch_list

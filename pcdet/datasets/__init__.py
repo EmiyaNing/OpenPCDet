@@ -6,6 +6,7 @@ from pcdet.utils import common_utils
 
 from .dataset import DatasetTemplate
 from .kitti.kitti_dataset import KittiDataset
+from .kitti.semi_kitti_dataset import SemiKittiDataset
 from .nuscenes.nuscenes_dataset import NuScenesDataset
 from .waymo.waymo_dataset import WaymoDataset
 
@@ -41,7 +42,7 @@ class DistributedSampler(_DistributedSampler):
         return iter(indices)
 
 
-def build_dataloader(dataset_cfg, class_names, batch_size, dist, root_path=None, workers=4,
+def build_dataloader(dataset_cfg, class_names, batch_size, dist, tta=False,root_path=None, workers=4,
                      logger=None, training=True, merge_all_iters_to_one_epoch=False, total_epochs=0):
 
     dataset = __all__[dataset_cfg.DATASET](
@@ -50,6 +51,7 @@ def build_dataloader(dataset_cfg, class_names, batch_size, dist, root_path=None,
         root_path=root_path,
         training=training,
         logger=logger,
+        TTA=tta,
     )
 
     if merge_all_iters_to_one_epoch:
@@ -69,5 +71,39 @@ def build_dataloader(dataset_cfg, class_names, batch_size, dist, root_path=None,
         shuffle=(sampler is None) and training, collate_fn=dataset.collate_batch,
         drop_last=False, sampler=sampler, timeout=0
     )
+
+    return dataset, dataloader, sampler
+
+
+def build_semi_dataloader(dataset_cfg, class_names, batch_size, dist, root_path=None, workers=4,
+                     logger=None, training=True, merge_all_iters_to_one_epoch=False, total_epochs=0):
+
+    assert merge_all_iters_to_one_epoch is False
+    dataset = SemiKittiDataset(
+        dataset_cfg=dataset_cfg,
+        class_names=class_names,
+        root_path=root_path,
+        training=training,
+        logger=logger,
+    )
+    if merge_all_iters_to_one_epoch:
+        assert hasattr(dataset, 'merge_all_iters_to_one_epoch')
+        dataset.merge_all_iters_to_one_epoch(merge=True, epochs=total_epochs)
+
+    if dist:
+        if training:
+            sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+        else:
+            rank, world_size = common_utils.get_dist_info()
+            sampler = DistributedSampler(dataset, world_size, rank, shuffle=False)
+    else:
+        sampler = None
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, pin_memory=True, num_workers=workers,
+        shuffle=(sampler is None) and training, collate_fn=dataset.collate_batch,
+        drop_last=False, sampler=sampler, timeout=0
+    )
+
+    
 
     return dataset, dataloader, sampler

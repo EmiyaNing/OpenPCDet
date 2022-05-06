@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from ...ops.pointnet2.pointnet2_stack import voxel_pool_modules as voxelpool_stack_modules
 from ...utils import common_utils
 from .roi_head_template import RoIHeadTemplate
@@ -76,7 +77,9 @@ class VoxelRCNNHead(RoIHeadTemplate):
             if k != self.model_cfg.REG_FC.__len__() - 1 and self.model_cfg.DP_RATIO > 0:
                 reg_fc_list.append(nn.Dropout(self.model_cfg.DP_RATIO))
         self.reg_fc_layers = nn.Sequential(*reg_fc_list)
-        self.reg_pred_layer = nn.Linear(pre_channel, self.box_coder.code_size * self.num_class, bias=True)
+        #self.reg_pred_layer = nn.Linear(pre_channel, self.box_coder.code_size * self.num_class, bias=True)
+        # In roi_head_template, them dont concern about the 
+        self.reg_pred_layer = nn.Linear(pre_channel, self.box_coder.code_size, bias=True)
 
         self.init_weights()
 
@@ -214,6 +217,52 @@ class VoxelRCNNHead(RoIHeadTemplate):
                           - (local_roi_size.unsqueeze(dim=1) / 2)  # (B, 6x6x6, 3)
         return roi_grid_points
 
+    def get_box_cls_layer_loss(self, forward_ret_dict):
+        loss_cfgs = self.model_cfg.LOSS_CONFIG
+        rcnn_cls = forward_ret_dict['rcnn_cls']
+        rcnn_cls_labels = forward_ret_dict['rcnn_cls_labels'].view(-1)
+        if self.model_cfg.CLASS_AGNOSTIC:
+            if loss_cfgs.CLS_LOSS == 'BinaryCrossEntropy':
+                rcnn_cls_flat = rcnn_cls.view(-1, self.num_class)
+                batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), rcnn_cls_labels.float(), reduction='none')
+                cls_valid_mask = (rcnn_cls_labels >= 0).float()
+                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
+            elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
+                batch_loss_cls = F.cross_entropy(rcnn_cls, rcnn_cls_labels, reduction='none', ignore_index=-1)
+                cls_valid_mask = (rcnn_cls_labels >= 0).float()
+                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
+            else:
+                raise NotImplementedError
+
+            rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
+            tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
+            return rcnn_loss_cls, tb_dict
+        else:
+            gt_cls_of_rois = forward_ret_dict['gt_cls_of_rois'].view(-1)
+            one_hot_target = torch.zeros(
+                [rcnn_cls_labels.shape[0], self.num_class + 1], dtype=rcnn_cls_labels.dtype, device=rcnn_cls_labels.device
+            )
+            one_hot_target.scatter_(-1, gt_cls_of_rois.unsqueeze(-1).long(), rcnn_cls_labels.unsqueeze(-1))
+            one_hot_target = one_hot_target[:, 1:]
+            zero_mask      = one_hot_target == 0
+            one_hot_target[zero_mask] = 0.00001
+            if loss_cfgs.CLS_LOSS == 'BinaryCrossEntropy':
+                rcnn_cls_flat = rcnn_cls.view(-1, self.num_class)
+                batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), one_hot_target.float(), reduction='none')
+                cls_valid_mask = (rcnn_cls_labels >= 0).float()
+                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask.unsqueeze(-1)).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
+            elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
+                batch_loss_cls = F.cross_entropy(rcnn_cls, one_hot_target, reduction='none', ignore_index=-1)
+                cls_valid_mask = (rcnn_cls_labels >= 0).float()
+                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask.unsqueeze(-1)).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
+            else:
+                raise NotImplementedError
+
+            rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
+            tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
+            return rcnn_loss_cls, tb_dict
+
+
     def forward(self, batch_dict):
         """
         :param input_data: input dict
@@ -237,14 +286,6 @@ class VoxelRCNNHead(RoIHeadTemplate):
         rcnn_cls = self.cls_pred_layer(self.cls_fc_layers(shared_features))
         rcnn_reg = self.reg_pred_layer(self.reg_fc_layers(shared_features))
 
-        # grid_size = self.model_cfg.ROI_GRID_POOL.GRID_SIZE
-        # batch_size_rcnn = pooled_features.shape[0]
-        # pooled_features = pooled_features.permute(0, 2, 1).\
-        #     contiguous().view(batch_size_rcnn, -1, grid_size, grid_size, grid_size)  # (BxN, C, 6, 6, 6)
-
-        # shared_features = self.shared_fc_layer(pooled_features.view(batch_size_rcnn, -1, 1))
-        # rcnn_cls = self.cls_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, 1 or 2)
-        # rcnn_reg = self.reg_layers(shared_features).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, C)
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
@@ -256,6 +297,8 @@ class VoxelRCNNHead(RoIHeadTemplate):
         else:
             targets_dict['rcnn_cls'] = rcnn_cls
             targets_dict['rcnn_reg'] = rcnn_reg
+            batch_dict['rcnn_cls'] = rcnn_cls
+            batch_dict['rcnn_reg'] = rcnn_reg
 
             self.forward_ret_dict = targets_dict
 

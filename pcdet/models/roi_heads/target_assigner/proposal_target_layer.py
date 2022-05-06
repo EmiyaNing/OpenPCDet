@@ -32,6 +32,7 @@ class ProposalTargetLayer(nn.Module):
         batch_rois, batch_gt_of_rois, batch_roi_ious, batch_roi_scores, batch_roi_labels = self.sample_rois_for_rcnn(
             batch_dict=batch_dict
         )
+        batch_cls_of_rois = batch_gt_of_rois[:, :, -1:]
         # regression valid mask
         reg_valid_mask = (batch_roi_ious > self.roi_sampler_cfg.REG_FG_THRESH).long()
 
@@ -56,7 +57,7 @@ class ProposalTargetLayer(nn.Module):
 
         targets_dict = {'rois': batch_rois, 'gt_of_rois': batch_gt_of_rois, 'gt_iou_of_rois': batch_roi_ious,
                         'roi_scores': batch_roi_scores, 'roi_labels': batch_roi_labels,
-                        'reg_valid_mask': reg_valid_mask,
+                        'reg_valid_mask': reg_valid_mask, 'gt_cls_of_rois':batch_cls_of_rois,
                         'rcnn_cls_labels': batch_cls_labels}
 
         return targets_dict

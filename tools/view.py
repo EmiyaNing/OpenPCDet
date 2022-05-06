@@ -18,7 +18,7 @@ def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
 
-    parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
+    parser.add_argument('--batch_size', type=int, default=1, required=False, help='batch size for training')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
@@ -59,7 +59,8 @@ def main():
         batch_size=args.batch_size,
         dist=False, workers=1,
         logger=logger,
-        training=True,
+        tta=False,
+        training=False,
         merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch,
         total_epochs=10
     )
@@ -71,7 +72,10 @@ def main():
     for idx, data in enumerate(train_loader):
         gt_boxes = data['gt_boxes'].squeeze()
         points   = data['points']
-        gt_boxes = gt_boxes[:, :7]
+        if len(gt_boxes.shape) > 1:
+            gt_boxes = gt_boxes[:, :7]
+        else:
+            gt_boxes = gt_boxes[None, :7]
         load_data_to_gpu(data)
         pred_dicts, _ = model.forward(data)
         pred_boxes = pred_dicts[0]['pred_boxes'].detach()

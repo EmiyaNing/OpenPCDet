@@ -5,7 +5,6 @@ import torch
 import tqdm
 import numpy as np
 from torch.nn.utils import clip_grad_norm_
-from pcdet.models import load_data_to_gpu
 
 def compact_batch(tensor_list):
     '''

@@ -288,3 +288,94 @@ class GroupAll(nn.Module):
             new_features = grouped_xyz
 
         return new_features
+
+
+def top3_interpolate(xyz, new_xyz, feats, nsamples=None):
+    """
+    Args:
+        xyz: tensor, (N, C),
+        feats: tensor, (N, Cf), features at xyz location
+        new_xyz: tensor, (M, C)
+        nsamples: an int number, but not used here.
+    """
+    # 检查数据！
+    # print('==> xyz.shape: ', xyz.shape)
+    # print(xyz[:50, :])
+    # print('==> new_xyz.shape: ', new_xyz.shape)
+    # print(new_xyz[:50, :])
+    
+    # 1. 准备batch idx
+    if len(xyz.shape) == len(new_xyz.shape) == len(feats.shape) == 2:
+        xyz_batch = xyz.unsqueeze(dim=0) # (N, C) -> (1, N, C)
+        new_xyz_batch = new_xyz.unsqueeze(dim=0)# (M, C) -> (1, M, C)
+        feats_batch = feats.unsqueeze(dim=0).permute(0,2,1).contiguous() # (N, Cf) -> (1, N, Cf) -> (1,Cf,N)
+    else:
+        raise NotImplementedError
+    
+    # 1. 计算距离
+    dist, idx = three_nn(new_xyz_batch, xyz_batch)
+    dist_recip = 1.0 / (dist + 1e-8)
+    norm = torch.sum(dist_recip, dim=2, keepdim=True)
+    weight = dist_recip / norm
+    # print('==> idx.shape: ', idx.shape) # (1, M, nsamples)
+    interpolated_feats_batch = three_interpolate(feats_batch, idx, weight).contiguous()    
+
+    # (1, Cf, M) -> (1,M,Cf) -> (M, Cf)
+    interpolated_feats = interpolated_feats_batch.permute(0,2,1).squeeze(dim=0)
+    # print('==> interpolated_feats.shape: ', interpolated_feats.shape)
+
+    return interpolated_feats
+
+
+def top3_interpolate_with_grad(xyz, new_xyz, feats, nsamples=None):
+    """
+    Args:
+        xyz: tensor, (N, C),
+        feats: tensor, (N, Cf), features at xyz location
+        new_xyz: tensor, (M, C)
+        nsamples: an int number, but not used here.
+        interpolated_feats: tensor, (M, Cf)
+    """
+    # assert new_xyz.requires_grad == feats.requires_grad == True # just when training
+
+    # 1. 准备batch idx
+    if len(xyz.shape) == len(new_xyz.shape) == len(feats.shape) == 2:
+        # (N, C) -> (1, N, C)
+        xyz_batch = xyz.unsqueeze(dim=0) 
+        # (M, C) -> (1, M, C), 这个阻隔了梯度，用于idx获取
+        new_xyz_batch = new_xyz.detach().unsqueeze(dim=0)
+        # (N, Cf) -> (1, N, Cf) -> (1, Cf, N)
+        feats_batch = feats.unsqueeze(dim=0).permute(0,2,1).contiguous()
+        # (N, C) -> (1, N, C) -> (1, C, N)
+        trans_xyz_batch = xyz.unsqueeze(dim=0).permute(0,2,1).contiguous()
+    else:
+        raise NotImplementedError
+
+    # 2. idx 收集，这里不需要梯度，但在idx获取完后计算权重的时候需要梯度
+    # idx.shape: (1, M, nsamples)
+    dist_wo_grad, idx = three_nn(new_xyz_batch, xyz_batch)
+
+    # idx用于gather, gather的时候xyz/feat 都需要梯度的
+    # (1, C, M, nsamples) -> (C, M, nsamples) -> (M, nsamples, C)
+    threenn_xyz = grouping_operation(trans_xyz_batch, idx).squeeze(dim=0).permute(1,2,0).contiguous()
+    threenn_feats = grouping_operation(feats_batch, idx).squeeze(dim=0).permute(1,2,0).contiguous()
+
+    # 计算weight进行加权
+    # (M, nsamples, C) - (M, 1, C) , -> (M, nsamples, C), -> (M, nsamples)
+    dist = torch.norm( (threenn_xyz - new_xyz.unsqueeze(dim=1).expand(-1, idx.shape[-1], -1)), dim=-1)
+    # print('==> dist: ', dist)
+
+
+    # (M, nsamples)
+    dist_recip = 1.0 / (dist + 1e-8)
+    norm = torch.sum(dist_recip, dim=1, keepdim=True)
+    weight = dist_recip / norm
+    # print('==> weight: ', weight)
+
+    # assert weight.requires_grad == True # just when training
+    
+    # (M, nsamples, C) * (M, nsamples, 1), 
+    # (M, nsamples, C) -> (M, C)
+    interpolated_feats = torch.sum(threenn_feats * weight.unsqueeze(-1), dim=1)
+
+    return interpolated_feats

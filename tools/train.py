@@ -16,11 +16,13 @@ from pcdet.models import build_network, model_fn_decorator
 from pcdet.utils import common_utils
 from train_utils.optimization import build_optimizer, build_scheduler
 from train_utils.train_utils import train_model
+from train_utils.self_kd_train_utils import train_model_selfkd
 
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
+    parser.add_argument('--self_kd', action='store_true', default=False, help='choose the training way')
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
@@ -34,7 +36,7 @@ def parse_config():
     parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
-    parser.add_argument('--max_ckpt_save_num', type=int, default=50, help='max number of saved checkpoint')
+    parser.add_argument('--max_ckpt_save_num', type=int, default=20, help='max number of saved checkpoint')
     parser.add_argument('--merge_all_iters_to_one_epoch', action='store_true', default=False, help='')
     parser.add_argument('--set', dest='set_cfgs', default=None, nargs=argparse.REMAINDER,
                         help='set extra config keys if needed')
@@ -141,7 +143,7 @@ def main():
 
     model.train()  # before wrap to DistributedDataParallel to support fixed some parameters
     if dist_train:
-        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()], find_unused_parameters=True)
     logger.info(model)
 
     lr_scheduler, lr_warmup_scheduler = build_scheduler(
@@ -152,25 +154,46 @@ def main():
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
-    train_model(
-        model,
-        optimizer,
-        train_loader,
-        model_func=model_fn_decorator(),
-        lr_scheduler=lr_scheduler,
-        optim_cfg=cfg.OPTIMIZATION,
-        start_epoch=start_epoch,
-        total_epochs=args.epochs,
-        start_iter=it,
-        rank=cfg.LOCAL_RANK,
-        tb_log=tb_log,
-        ckpt_save_dir=ckpt_dir,
-        train_sampler=train_sampler,
-        lr_warmup_scheduler=lr_warmup_scheduler,
-        ckpt_save_interval=args.ckpt_save_interval,
-        max_ckpt_save_num=args.max_ckpt_save_num,
-        merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch
-    )
+    if not args.self_kd:
+        train_model(
+            model,
+            optimizer,
+            train_loader,
+            model_func=model_fn_decorator(),
+            lr_scheduler=lr_scheduler,
+            optim_cfg=cfg.OPTIMIZATION,
+            start_epoch=start_epoch,
+            total_epochs=args.epochs,
+            start_iter=it,
+            rank=cfg.LOCAL_RANK,
+            tb_log=tb_log,
+            ckpt_save_dir=ckpt_dir,
+            train_sampler=train_sampler,
+            lr_warmup_scheduler=lr_warmup_scheduler,
+            ckpt_save_interval=args.ckpt_save_interval,
+            max_ckpt_save_num=args.max_ckpt_save_num,
+            merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch
+        )
+    else:
+        train_model_selfkd(
+            model,
+            optimizer,
+            train_loader,
+            model_func=model_fn_decorator(),
+            lr_scheduler=lr_scheduler,
+            optim_cfg=cfg.OPTIMIZATION,
+            start_epoch=start_epoch,
+            total_epochs=args.epochs,
+            start_iter=it,
+            rank=cfg.LOCAL_RANK,
+            tb_log=tb_log,
+            ckpt_save_dir=ckpt_dir,
+            train_sampler=train_sampler,
+            lr_warmup_scheduler=lr_warmup_scheduler,
+            ckpt_save_interval=args.ckpt_save_interval,
+            max_ckpt_save_num=args.max_ckpt_save_num,
+            merge_all_iters_to_one_epoch=args.merge_all_iters_to_one_epoch
+        )
 
     logger.info('**********************End training %s/%s(%s)**********************\n\n\n'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))

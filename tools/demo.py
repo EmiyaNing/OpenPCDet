@@ -1,20 +1,23 @@
 import argparse
 import glob
 from pathlib import Path
-import math
 
+try:
+    import open3d
+    from visual_utils import open3d_vis_utils as V
+    OPEN3D_FLAG = True
+except:
+    import mayavi.mlab as mlab
+    from visual_utils import visualize_utils as V
+    OPEN3D_FLAG = False
 
-import mayavi.mlab as mlab
 import numpy as np
 import torch
-import cv2
 
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
 from pcdet.models import build_network, load_data_to_gpu
-from pcdet.utils import common_utils, object3d_kitti
-from visual_utils import visualize_utils as V
-
+from pcdet.utils import common_utils, object3d_kitti, calibration_kitti, box_utils
 
 class DemoDataset(DatasetTemplate):
     def __init__(self, dataset_cfg, class_names, training=True, root_path=None, logger=None, ext='.bin'):
@@ -31,6 +34,7 @@ class DemoDataset(DatasetTemplate):
         )
         self.root_path = root_path
         self.ext = ext
+        self.info = {}
         data_file_list = glob.glob(str(root_path / f'*{self.ext}')) if self.root_path.is_dir() else [self.root_path]
 
         data_file_list.sort()
@@ -39,71 +43,60 @@ class DemoDataset(DatasetTemplate):
     def __len__(self):
         return len(self.sample_file_list)
 
-    def removePoints(self, PointCloud, BoundaryCond):
-        # Boundary condition
-        minX = BoundaryCond['minX']
-        maxX = BoundaryCond['maxX']
-        minY = BoundaryCond['minY']
-        maxY = BoundaryCond['maxY']
-        minZ = BoundaryCond['minZ']
-        maxZ = BoundaryCond['maxZ']
-
-        # Remove the point out of range x,y,z
-        mask = np.where((PointCloud[:, 0] >= minX) & (PointCloud[:, 0] <= maxX) & (PointCloud[:, 1] >= minY) & (
-                PointCloud[:, 1] <= maxY) & (PointCloud[:, 2] >= minZ) & (PointCloud[:, 2] <= maxZ))
-        PointCloud = PointCloud[mask]
-
-        PointCloud[:, 2] = PointCloud[:, 2] - minZ
-
-        return PointCloud
-
-    def makeBEVFeature(self, points, boundry, Map_config):
-        points = self.removePoints(points, boundry)
-        discretization_x = Map_config["discretization_x"]
-        discretization_y = Map_config["discretization_y"]
-        Width   = Map_config["BEVHeight"]
-        Height  = Map_config["BEVWidth"]
-
-        PointCloud = np.copy(points)
-        PointCloud[:, 0] = np.int_(np.floor(PointCloud[:, 0] / discretization_x) + Width / 2)
-        PointCloud[:, 1] = np.int_(np.floor(PointCloud[:, 1] / discretization_y) + Height / 2)
-        indices = np.lexsort((-PointCloud[:, 2], PointCloud[:, 1], PointCloud[:, 0]))
-        PointCloud = PointCloud[indices]
-
-        heightMap  = np.zeros((Height, Width))
-        _, indices = np.unique(PointCloud[:, 0:2], axis=0, return_index=True)
-        PointCloud_frac = PointCloud[indices]
-        # some important problem is image coordinate is (y,x), not (x,y)
-        # so here just use x as height, y as width
-        max_height = float(np.abs(boundry['maxZ'] - boundry['minZ']))
-        heightMap[np.int_(PointCloud_frac[:, 0]), np.int_(PointCloud_frac[:, 1])] = PointCloud_frac[:, 2] / max_height
-
-        # Intensity Map & DensityMap
-        intensityMap = np.zeros((Height, Width))
-        densityMap = np.zeros((Height, Width))
-
-        _, indices, counts = np.unique(PointCloud[:, 0:2], axis=0, return_index=True, return_counts=True)
-        PointCloud_top = PointCloud[indices]
-
-        normalizedCounts = np.minimum(1.0, np.log(counts + 1) / np.log(64))
-
-        intensityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = PointCloud_top[:, 3]
-        densityMap[np.int_(PointCloud_top[:, 0]), np.int_(PointCloud_top[:, 1])] = normalizedCounts
-
-        RGB_Map = np.zeros((3, Height, Width))
-        RGB_Map[2, :, :] = densityMap[:Height, :Width]  # r_map
-        RGB_Map[1, :, :] = heightMap[:Height, :Width]  # g_map
-        RGB_Map[0, :, :] = intensityMap[:Height, :Width]  # b_map
-        RGB_Map = np.transpose(RGB_Map, [0, 2, 1])
-        return RGB_Map
-
-
-    def get_label(self, index):
-        cwd        = self.root_path.stem + '.txt'
-        root_path  = self.root_path.parent.parent
-        label_file = root_path / 'label_2' / cwd
+    def get_label(self, idx):
+        if idx < 10:
+            label_file = self.root_path.parent / 'label_2' / ('00000%s.txt' % idx)
+        elif idx < 100:
+            label_file = self.root_path.parent / 'label_2' / ('0000%s.txt' % idx)
+        else:
+            label_file = self.root_path.parent / 'label_2' / ('000%s.txt' % idx)
+        print(label_file)
         assert label_file.exists()
         return object3d_kitti.get_objects_from_label(label_file)
+
+
+    def get_calib(self, idx):
+        if idx < 10:
+            calib_file = self.root_path.parent / 'calib' / ('00000%s.txt' % idx)
+        elif idx < 100:
+            calib_file = self.root_path.parent / 'calib' / ('0000%s.txt' % idx)
+        else:
+            calib_file = self.root_path.parent / 'calib' / ('000%s.txt' % idx)
+        print(calib_file)
+        assert calib_file.exists()
+        return calibration_kitti.Calibration(calib_file)
+
+    def get_info(self, idx):
+        obj_list = self.get_label(idx)
+        calib = self.get_calib(idx)
+        info = {}
+        annotations = {}
+        annotations['name'] = np.array([obj.cls_type for obj in obj_list])
+        annotations['truncated'] = np.array([obj.truncation for obj in obj_list])
+        annotations['occluded'] = np.array([obj.occlusion for obj in obj_list])
+        annotations['alpha'] = np.array([obj.alpha for obj in obj_list])
+        annotations['bbox'] = np.concatenate([obj.box2d.reshape(1, 4) for obj in obj_list], axis=0)
+        annotations['dimensions'] = np.array([[obj.l, obj.h, obj.w] for obj in obj_list])  # lhw(camera) format
+        annotations['location'] = np.concatenate([obj.loc.reshape(1, 3) for obj in obj_list], axis=0)
+        annotations['rotation_y'] = np.array([obj.ry for obj in obj_list])
+        annotations['score'] = np.array([obj.score for obj in obj_list])
+        annotations['difficulty'] = np.array([obj.level for obj in obj_list], np.int32)
+
+        num_objects = len([obj.cls_type for obj in obj_list if obj.cls_type != 'DontCare'])
+        num_gt = len(annotations['name'])
+        index = list(range(num_objects)) + [-1] * (num_gt - num_objects)
+        annotations['index'] = np.array(index, dtype=np.int32)
+
+        loc = annotations['location'][:num_objects]
+        dims = annotations['dimensions'][:num_objects]
+        rots = annotations['rotation_y'][:num_objects]
+        loc_lidar = calib.rect_to_lidar(loc)
+        l, h, w = dims[:, 0:1], dims[:, 1:2], dims[:, 2:3]
+        loc_lidar[:, 2] += h[:, 0] / 2
+        gt_boxes_lidar = np.concatenate([loc_lidar, l, w, h, -(np.pi / 2 + rots[..., np.newaxis])], axis=1)
+        annotations['gt_boxes_lidar'] = gt_boxes_lidar
+        info['annos'] = annotations
+        return info
 
     def __getitem__(self, index):
         if self.ext == '.bin':
@@ -112,43 +105,26 @@ class DemoDataset(DatasetTemplate):
             points = np.load(self.sample_file_list[index])
         else:
             raise NotImplementedError
-        labels = self.get_label(index)
-        #labels = common_utils.drop_info_with_name(labels, name='DontCare')
-        gt_labels = []
-        for label in labels:
-            if label.cls_type == 'DontCare':
-                continue
-            x, y, z = label.loc
-            w, l, h = label.w, label.l, label.h
-            alpha   = label.alpha + math.pi
-            gt_labels.append([z, y, x, w, l, h, alpha])
-        boundry = {}
-        point_range = self.dataset_cfg.POINT_CLOUD_RANGE
-        voxel_step  = self.dataset_cfg.DATA_PROCESSOR[2].VOXEL_SIZE
-        MAP_config  = self.dataset_cfg.BEV_CONFIG
-        boundry["minX"] = point_range[1]
-        boundry["minY"] = point_range[0]
-        boundry["minZ"] = point_range[2]
-        boundry["maxX"] = point_range[4]
-        boundry["maxY"] = point_range[3]
-        boundry["maxZ"] = point_range[5]
-        boundry["step_x"] = voxel_step[1]
-        boundry["step_y"] = voxel_step[0]
-        rgb_map = self.makeBEVFeature(points, boundry, MAP_config)
-
-        print_map = np.floor(rgb_map * 255)
-        print_map = print_map.astype(np.uint8)
-        print_map = print_map.transpose(1, 2, 0)
-        cv2.imshow("bev_image", print_map)
-
-
 
         input_dict = {
             'points': points,
             'frame_id': index,
-            'bev': rgb_map,
-            'gt_labels': gt_labels
         }
+        calib = self.get_calib(index)
+        info = self.get_info(index)
+        if 'annos' in info:
+            annos = info['annos']
+            annos = common_utils.drop_info_with_name(annos, name='DontCare')
+            loc, dims, rots = annos['location'], annos['dimensions'], annos['rotation_y']
+            gt_names = annos['name']
+            gt_boxes_camera = np.concatenate([loc, dims, rots[..., np.newaxis]], axis=1).astype(np.float32)
+            gt_boxes_lidar = box_utils.boxes3d_kitti_camera_to_lidar(gt_boxes_camera, calib)
+
+            input_dict.update({
+                'gt_names': gt_names,
+                'gt_boxes': gt_boxes_lidar
+            })
+
 
         data_dict = self.prepare_data(data_dict=input_dict)
         return data_dict
@@ -190,17 +166,21 @@ def main():
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)
             pred_dicts, _ = model.forward(data_dict)
-            gt_box    = data_dict['gt_labels'].squeeze(0)
-            print(gt_box)
-            print(pred_dicts[0]['pred_boxes'])
+            gt_boxes = data_dict['gt_boxes'][0, :,:7]
+            print(gt_boxes)
+            if gt_boxes.shape[1] > 0:
+                V.draw_scenes(
+                    points=data_dict['points'][:, 1:], gt_boxes=gt_boxes, ref_boxes=pred_dicts[0]['pred_boxes'],
+                    ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+                )
+            else:
+                V.draw_scenes(
+                    points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
+                    ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
+                )
 
-
-            V.draw_scenes(
-                points=data_dict['points'][:, 1:], gt_boxes=gt_box,ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-
-            mlab.show(stop=True)
+            if not OPEN3D_FLAG:
+                mlab.show(stop=True)
 
     logger.info('Demo done.')
 

@@ -1,9 +1,11 @@
 import argparse
 import datetime
+from fileinput import filename
 import glob
 import os
 import re
 import time
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +52,51 @@ def parse_config():
         cfg_from_list(args.set_cfgs, cfg)
 
     return args, cfg
+
+
+def eval_ckpt_list(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
+    ckpt_path1, ckpt_path2 = args.ckpt, args.ckpt2
+    temp_model = copy.deepcopy(model)
+    model.load_params_from_file(filename=ckpt_path1, logger=logger, to_cpu=dist_test)
+    temp_model.load_params_from_file(filename=ckpt_path2, logger=logger, to_cpu=dist_test)
+    static_org_model = model.state_dict()
+    static_fir_model = temp_model.state_dict()
+    for key in static_org_model.keys():
+        static_org_model[key] = (static_org_model[key] + static_fir_model[key]) / 2
+    model.load_state_dict(static_org_model)
+    model.cuda()
+    eval_utils.eval_one_epoch(
+        cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
+        result_dir=eval_output_dir, save_to_file=args.save_to_file
+    )
+    
+    
+
+def eval_ckpt_listv2(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
+    print("\n\n\n\n")
+    print("eval with mean model")
+    print("\n\n\n\n")
+    ckpt_path1, ckpt_path2, ckpt_path3 = args.ckpt, args.ckpt2, args.ckpt3
+    temp_model = copy.deepcopy(model)
+    temp_model2= copy.deepcopy(model)
+    model.load_params_from_file(filename=ckpt_path1, logger=logger, to_cpu=dist_test)
+    temp_model.load_params_from_file(filename=ckpt_path2, logger=logger, to_cpu=dist_test)
+    temp_model2.load_params_from_file(filename=ckpt_path3, logger=logger, to_cpu=dist_test)
+    static_org_model = model.state_dict()
+    static_tep_model = temp_model.state_dict()
+    static_sec_model = temp_model2.state_dict()
+    for key in static_org_model.keys():
+        static_org_model[key] = (static_org_model[key] + static_tep_model[key] + static_sec_model[key]) / 3
+    
+    model.load_state_dict(static_org_model)
+    
+    model.cuda()
+    eval_utils.eval_one_epoch(
+        cfg, model, test_loader, epoch_id, logger, dist_test=dist_test,
+        result_dir=eval_output_dir, save_to_file=args.save_to_file
+    )
+
+
 
 
 def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):

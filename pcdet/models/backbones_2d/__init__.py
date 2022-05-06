@@ -4,7 +4,9 @@ from .darknet import CSPDarknet, CoordTransformer
 from .swin import TransSwinFA,TransSWINNet, TransSWINNetV2, TransSWINFFANet, TransSwinFAV2
 from .poolformer import TransSPFANet, TransSPoolformer, TransSwinBase, Trans_Coor_Swin_Net
 from .WTSSA import CoorSWINNet
-from .SCConv import SCConv2D, SCConv2DV2
+from .SCConv import SCConv2D, SCConv2DV2, SCConv2DV3
+from .MultiScale_SCConv import MultiScale_SCConv2D, MultiSCONVv2, MultiAttentionFusion, MultiSCConvFPN
+from .MS_finetune import MSConv2DFusion
 
 __all__ = {
     'BaseBEVBackbone': BaseBEVBackbone,
@@ -26,4 +28,10 @@ __all__ = {
     'CoorSWINNet': CoorSWINNet,
     'SCConv2D': SCConv2D,
     'SCConv2DV2':SCConv2DV2,
+    'SCConv2DV3': SCConv2DV3,
+    'MultiScale_SCConv2D': MultiScale_SCConv2D,
+    'MultiSCONVv2': MultiSCONVv2,
+    'MultiAttentionFusion': MultiAttentionFusion,
+    'MultiSCConvFPN': MultiSCConvFPN,
+    'MSConv2DFusion': MSConv2DFusion,
 }

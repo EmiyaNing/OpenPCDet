@@ -3,7 +3,7 @@ from collections import namedtuple
 import numpy as np
 import torch
 
-from .detectors import build_detector
+from .detectors import build_detector, build_fusion_detector
 
 try:
     import kornia
@@ -20,6 +20,11 @@ def build_network(model_cfg, num_class, dataset):
     return model
 
 
+def build_fusion_network(model1, model2 ,model_cfg1, num_class, dataset):
+    model = build_fusion_detector(model1, model2, model_cfg1, num_class, dataset)
+    return model
+
+
 def load_data_to_gpu(batch_dict):
     for key, val in batch_dict.items():
         if not isinstance(val, np.ndarray):
@@ -32,6 +37,21 @@ def load_data_to_gpu(batch_dict):
             batch_dict[key] = torch.from_numpy(val).int().cuda()
         else:
             batch_dict[key] = torch.from_numpy(val).float().cuda()
+
+
+def load_data_to_gpu_tta(batch_dict_list):
+    for batch_dict in batch_dict_list:
+        for key, val in batch_dict.items():
+            if not isinstance(val, np.ndarray):
+                continue
+            elif key in ['frame_id', 'metadata', 'calib']:
+                continue
+            elif key in ['images']:
+                batch_dict[key] = kornia.image_to_tensor(val).float().cuda().contiguous()
+            elif key in ['image_shape']:
+                batch_dict[key] = torch.from_numpy(val).int().cuda()
+            else:
+                batch_dict[key] = torch.from_numpy(val).float().cuda()
 
 
 def model_fn_decorator():

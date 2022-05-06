@@ -115,6 +115,11 @@ class SCBottleneck(nn.Module):
         return out
 
 
+def get_attention_map(tensor_map):
+    tensor_map = torch.pow(torch.abs(tensor_map),2)
+    attention  = torch.mean(tensor_map, dim=1)
+    return attention
+
 class SCConv2D(nn.Module):
     def __init__(self,  model_cfg, input_channels):
         super().__init__()
@@ -164,14 +169,20 @@ class SCConv2D(nn.Module):
         x = self.groupv1_project(x)
         groupv1_temp = self.groupv1(x)
         groupv1_out  = self.groupv1_combine(groupv1_temp)
+        attention_group1 = get_attention_map(groupv1_out)
 
         groupv2_temp = self.groupv2_project(groupv1_temp)
         groupv2_temp = self.groupv2(groupv2_temp)
         groupv2_out  = self.groupv2_upsample(groupv2_temp)
+        attention_group2 = get_attention_map(groupv2_out)
 
         fusion_map   = torch.cat([groupv1_out, groupv2_out], dim = 1)
         output       = self.output_project(fusion_map)
+        attention_group3 = get_attention_map(output)
         data_dict["spatial_features_2d"] = output.contiguous()
+        data_dict["attention_group1"] = attention_group1
+        data_dict["attention_group2"] = attention_group2
+        data_dict["attention_group3"] = attention_group3
 
         return data_dict
 
@@ -226,6 +237,66 @@ class SCConv2DV2(nn.Module):
         groupv1_temp = self.groupv1(x)
         spatial_mask = self.spatial_block(groupv1_temp)
         groupv1_temp = spatial_mask * groupv1_temp
+        groupv1_out  = self.groupv1_combine(groupv1_temp)
+
+        groupv2_temp = self.groupv2_project(groupv1_temp)
+        groupv2_temp = self.groupv2(groupv2_temp)
+        groupv2_out  = self.groupv2_upsample(groupv2_temp)
+
+        fusion_map   = torch.cat([groupv1_out, groupv2_out], dim = 1)
+        output       = self.output_project(fusion_map)
+        data_dict["spatial_features_2d"] = output.contiguous()
+
+        return data_dict
+
+class SCConv2DV3(nn.Module):
+    def __init__(self,  model_cfg, input_channels):
+        super().__init__()
+        self.model_cfg = model_cfg
+        self.num_bev_features = 256
+        self.groupv1_project = nn.Sequential(
+            nn.Conv2d(input_channels, 128, 3, 1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.SELU(),
+        )
+        self.groupv1         = nn.Sequential(
+            SCBottleneck(128, 32, 1, norm_layer=nn.BatchNorm2d),
+            SCBottleneck(128, 32, 1, norm_layer=nn.BatchNorm2d),
+            SCBottleneck(128, 32, 1, norm_layer=nn.BatchNorm2d),
+        )
+
+        self.groupv1_combine = nn.Sequential(
+            nn.Conv2d(128, 256, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.SELU(),
+        )
+
+        self.groupv2_project = nn.Sequential(
+            nn.Conv2d(128, 256, 3, 2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.SELU(),
+        )
+        self.groupv2         = nn.Sequential(
+            SCBottleneck(256, 64, 1, norm_layer=nn.BatchNorm2d),
+            SCBottleneck(256, 64, 1, norm_layer=nn.BatchNorm2d),
+            SCBottleneck(256, 64, 1, norm_layer=nn.BatchNorm2d),
+        )
+        self.groupv2_upsample= nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.SELU(),
+        )
+        self.output_project  = nn.Sequential(
+            nn.Conv2d(512, 256, 3, 1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.SELU(),
+        )
+
+    def forward(self, data_dict):
+
+        x = data_dict["spatial_features"]
+        x = self.groupv1_project(x)
+        groupv1_temp = self.groupv1(x)
         groupv1_out  = self.groupv1_combine(groupv1_temp)
 
         groupv2_temp = self.groupv2_project(groupv1_temp)

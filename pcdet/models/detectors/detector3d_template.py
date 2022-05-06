@@ -22,7 +22,7 @@ class Detector3DTemplate(nn.Module):
 
         self.module_topology = [
             'vfe', 'backbone_3d', 'map_to_bev_module', 'pfe',
-            'backbone_2d', 'dense_head',  'point_head', 'roi_head'
+            'backbone_2d', 'dense_head', 'post_pfe', 'point_head', 'roi_head'
         ]
 
     @property
@@ -71,6 +71,7 @@ class Detector3DTemplate(nn.Module):
 
         backbone_3d_module = backbones_3d.__all__[self.model_cfg.BACKBONE_3D.NAME](
             model_cfg=self.model_cfg.BACKBONE_3D,
+            num_class=self.num_class,                                 ####################
             input_channels=model_info_dict['num_point_features'],
             grid_size=model_info_dict['grid_size'],
             voxel_size=model_info_dict['voxel_size'],
@@ -105,6 +106,20 @@ class Detector3DTemplate(nn.Module):
         model_info_dict['module_list'].append(backbone_2d_module)
         model_info_dict['num_bev_features'] = backbone_2d_module.num_bev_features
         return backbone_2d_module, model_info_dict
+
+    def build_post_pfe(self, model_info_dict):
+        if self.model_cfg.get('POST_PFE', None) is None:
+            return None, model_info_dict
+
+        pfe_module = pfe.__all__[self.model_cfg.POST_PFE.NAME](
+            model_cfg=self.model_cfg.POST_PFE,
+            voxel_size=model_info_dict['voxel_size'],
+            point_cloud_range=model_info_dict['point_cloud_range'],
+        )
+        model_info_dict['module_list'].append(pfe_module)
+        model_info_dict['num_point_features'] = pfe_module.num_point_features
+        model_info_dict['num_point_features_before_fusion'] = pfe_module.num_point_features_before_fusion
+        return pfe_module, model_info_dict
 
     def build_pfe(self, model_info_dict):
         if self.model_cfg.get('PFE', None) is None:
@@ -161,7 +176,16 @@ class Detector3DTemplate(nn.Module):
     def build_roi_head(self, model_info_dict):
         if self.model_cfg.get('ROI_HEAD', None) is None:
             return None, model_info_dict
-        point_head_module = roi_heads.__all__[self.model_cfg.ROI_HEAD.NAME](
+        if self.model_cfg.ROI_HEAD.NAME == 'CT3DHead':
+            point_head_module = roi_heads.__all__[self.model_cfg.ROI_HEAD.NAME](
+                model_cfg=self.model_cfg.ROI_HEAD,
+                input_channels=model_info_dict['num_point_features'],
+                voxel_size=model_info_dict['voxel_size'],
+                point_cloud_range=model_info_dict['point_cloud_range'],
+                num_class=self.num_class if not self.model_cfg.ROI_HEAD.CLASS_AGNOSTIC else 1,
+            )
+        else:
+            point_head_module = roi_heads.__all__[self.model_cfg.ROI_HEAD.NAME](
             model_cfg=self.model_cfg.ROI_HEAD,
             input_channels=model_info_dict['num_point_features'],
             backbone_channels=model_info_dict['backbone_channels'],

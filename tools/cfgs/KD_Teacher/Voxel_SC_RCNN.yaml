@@ -38,7 +38,7 @@ DATA_CONFIG:
 
 MODEL:
     NAME: VoxelTEACHRCNN
-    TEACHER: True
+    TEACHER: False
 
     VFE:
         NAME: MeanVFE
