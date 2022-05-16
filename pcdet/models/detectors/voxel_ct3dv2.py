@@ -173,7 +173,7 @@ class Voxel_CT3DV2(Detector3DTemplate):
         epoch         = self.forward_ret_dict['cur_epoch']
         stage_one_cls = F.softmax(self.forward_ret_dict['stage_one_cls'] / self.tempture)
         stage_one_box = self.forward_ret_dict['stage_one_box']
-        stage_two_cls = F.softmax(self.forward_ret_dict['sub_stage_two_cls'])
+        stage_two_cls = F.softmax(self.forward_ret_dict['sub_stage_two_cls'] / self.tempture)
         stage_two_box = self.forward_ret_dict['sub_stage_two_box']
         stage_two_label = self.forward_ret_dict['sub_stage_two_labels']
         batch_sz = stage_one_box.shape[0]

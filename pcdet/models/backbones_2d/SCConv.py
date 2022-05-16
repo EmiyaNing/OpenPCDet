@@ -125,6 +125,7 @@ class SCConv2D(nn.Module):
         super().__init__()
         self.model_cfg = model_cfg
         self.num_bev_features = 64
+        self.input_channels = input_channels
         self.groupv1_project = nn.Sequential(
             nn.Conv2d(input_channels, 128, 3, 1, padding=1),
             nn.BatchNorm2d(128),

@@ -117,7 +117,7 @@ MODEL:
             }
 
     ROI_HEAD:
-        NAME: VoxelRCNNHead
+        NAME: VoxelRCNNHead_New
         CLASS_AGNOSTIC: False
 
         SHARED_FC: [256, 256]

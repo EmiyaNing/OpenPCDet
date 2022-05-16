@@ -28,6 +28,12 @@ from .second_test import FromVoxel2Point
 from .self_voxel_scconv import Voxel_SCCONV
 from .SASSD import SASSD
 from .voxel_ct3dv2 import Voxel_CT3DV2
+from .voxel_secondv3 import Voxel_Second_Subnet
+from .voxel_sub_second import Voxel_Second_Self
+from .iou_detector.second_iou import IOU_SECONDNet
+from .self_sub_heads.voxel_subheadsv1 import Voxel_SubHeads
+from .self_sub_heads.voxel_subheadsv2 import Voxel_SubHeadsv2
+from .self_sub_heads.voxel_subheadsv3 import Voxel_DESubHeads
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -62,6 +68,12 @@ __all__ = {
     'Voxel_SCCONV': Voxel_SCCONV,
     'SASSD': SASSD,
     'Voxel_CT3DV2': Voxel_CT3DV2,
+    'Voxel_Second_Subnet': Voxel_Second_Subnet,
+    'Voxel_Second_Self': Voxel_Second_Self,
+    'IOU_SECONDNet': IOU_SECONDNet,
+    'Voxel_SubHeads': Voxel_SubHeads,
+    'Voxel_SubHeadsv2': Voxel_SubHeadsv2,
+    'Voxel_DESubHeads': Voxel_DESubHeads,
 }
 
 

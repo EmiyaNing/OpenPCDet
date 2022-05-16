@@ -8,7 +8,7 @@ from .center_head import CenterHead
 from .distillation_anchor_head import KD_AnchorHeadSingle
 from .GID_anchor_head import GID_AnchorHeadSingle
 from .GID_anchor_headv2 import SESSD_Head
-from .iou_head import ODiou_Head
+from .iou_head import ODiou_Head, Iou_Head
 from .diversity_distillation_head import Diversity_Head
 from .diversity_distillation_headv2 import Diversity_HeadV2
 from .diversity_distillation_headv3 import Diversity_HeadV3
@@ -35,5 +35,6 @@ __all__ = {
     'Diversity_HeadV2': Diversity_HeadV2,
     'Diversity_HeadV3': Diversity_HeadV3,
     'IASSD_Head': IASSD_Head,
-    'AnchorHeadHarmony': AnchorHeadHarmony
+    'AnchorHeadHarmony': AnchorHeadHarmony,
+    'Iou_Head': Iou_Head,
 }

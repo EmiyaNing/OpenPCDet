@@ -79,7 +79,9 @@ def get_iou_consistency_loss(teacher_boxes, student_boxes):
 class SelfEMA(object):
     def __init__(self, model, alpha_first):
         self.last_epoch = model
-        self.last_epoch.eval()
+        self.num_class  = model.num_class
+        self.last_epoch.train()
+        self.stage_two_flag = False
         self.alpha_first = alpha_first
         self.alpha = 0
         self.cls_loss_function = loss_utils.SigmoidFocalClassificationLoss(alpha=0.25, gamma=2.0)
@@ -89,38 +91,38 @@ class SelfEMA(object):
             Now we use the OpenPCDet version normalize cls loss.
         '''
         load_data_to_gpu(orig_batch_dict)
-        _ =  self.last_epoch(orig_batch_dict)
-        last_cls   = orig_batch_dict['batch_cls_preds']
-        now_cls    = pred_batch_dict['batch_cls_preds']
-        now_box    = pred_batch_dict['batch_box_preds']
-        gt_boxes   = orig_batch_dict['gt_boxes']
-        batch_size = now_cls.shape[0]
-        for i in range(batch_size):
-            current_cls_preds = now_cls[i]
-            current_box_preds = now_box[i]
-            lass_cls_preds    = last_cls[i]
-            gt_temp_box       = gt_boxes[i][:, :7]
-            gt_temp_class     = gt_boxes[i][:, 7:]
+        _,_,_    = self.last_epoch(orig_batch_dict)
+        last_cls = orig_batch_dict['batch_cls_preds']
+        curr_cls = pred_batch_dict['batch_cls_preds']
+        curr_tar = pred_batch_dict['box_cls_labels']
+        batch_size = int(curr_cls.shape[0])
+        cared = curr_tar >= 0  # [N, num_anchors]
+        positives = curr_tar > 0
+        negatives = curr_tar == 0
+        negative_cls_weights = negatives * 1.0
+        cls_weights = (negative_cls_weights + 1.0 * positives).float()
+        if self.num_class == 1:
+            # class agnostic
+            curr_tar[positives] = 1
 
-            current_centers, current_size, current_rot = current_box_preds[:, :3], current_box_preds[:, 3:6], current_box_preds[:, 6:]
-            gt_centers, gt_size, gt_rot = gt_temp_box[:, :3], gt_temp_box[:, 3:6], gt_temp_box[:, 6:]
+        pos_normalizer = positives.sum(1, keepdim=True).float()
+        cls_weights /= torch.clamp(pos_normalizer, min=1.0)
+        cls_targets = curr_tar * cared.type_as(curr_tar)
+        cls_targets = cls_targets.unsqueeze(dim=-1)
 
-            with torch.no_grad():
-                current_class = torch.max(current_cls_preds, dim=-1, keepdim=True)[1]
-                not_same_class= (gt_temp_class != current_class.T).float()
-                MAX_DISTANCE = 1000000
-                dist = current_centers[:, None, :] - gt_centers[:, None, :]
-                dist = (dist ** 2).sum(-1)
-                dist += not_same_class * MAX_DISTANCE
+        cls_targets = cls_targets.squeeze(dim=-1)
+        one_hot_targets = torch.zeros(
+            *list(cls_targets.shape), self.num_class + 1, dtype=curr_cls.dtype, device=cls_targets.device
+        )
+        one_hot_targets.scatter_(-1, cls_targets.unsqueeze(dim=-1).long(), 1.0)
+        curr_cls = curr_cls.view(batch_size, -1, self.num_class)
+        curr_tar = one_hot_targets[..., 1:]
+        curr_tar = self.alpha * last_cls + (1 - self.alpha) * curr_tar
 
-                
-            
-
-            
-
-        
-
-        
+        if not self.stage_two_flag:
+            self_loss = self.model.dense_head.cls_loss_func(curr_cls, curr_tar, weights=cls_weights)
+        else:
+            self_loss = self.model.roi_head.cls_loss_func(curr_cls, curr_tar, weights=cls_weights)
         
         return now_cls
     

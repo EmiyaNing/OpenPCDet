@@ -51,7 +51,7 @@ def build_dataloader(dataset_cfg, class_names, batch_size, dist, tta=False,root_
         root_path=root_path,
         training=training,
         logger=logger,
-        TTA=tta,
+        #TTA=tta,
     )
 
     if merge_all_iters_to_one_epoch:

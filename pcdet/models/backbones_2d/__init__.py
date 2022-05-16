@@ -7,6 +7,7 @@ from .WTSSA import CoorSWINNet
 from .SCConv import SCConv2D, SCConv2DV2, SCConv2DV3
 from .MultiScale_SCConv import MultiScale_SCConv2D, MultiSCONVv2, MultiAttentionFusion, MultiSCConvFPN
 from .MS_finetune import MSConv2DFusion
+from .Self_SCConv import Self_SCONV, Self_SCONVV2
 
 __all__ = {
     'BaseBEVBackbone': BaseBEVBackbone,
@@ -34,4 +35,6 @@ __all__ = {
     'MultiAttentionFusion': MultiAttentionFusion,
     'MultiSCConvFPN': MultiSCConvFPN,
     'MSConv2DFusion': MSConv2DFusion,
+    'Self_SCONV': Self_SCONV,
+    'Self_SCONVV2': Self_SCONVV2,
 }
