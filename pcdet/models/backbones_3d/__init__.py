@@ -7,6 +7,7 @@ from .spconv_resnext import VoxelResXBackBone8x
 from .IASSD_backbone import IASSD_Backbone
 from .sa_spconv_backbone import SAVoxelBackBone8x, SAVoxelBackBone8xV2
 from .spconv_big_kernal import VoxelNeXT
+from .hybrid_paradigm_backbone import HybridParadigmBackbone
 
 __all__ = {
     'VoxelBackBone8x': VoxelBackBone8x,
@@ -22,4 +23,5 @@ __all__ = {
     'SAVoxelBackBone8x': SAVoxelBackBone8x,
     'SAVoxelBackBone8xV2': SAVoxelBackBone8xV2,
     'VoxelNeXT': VoxelNeXT,
+    'HybridParadigmBackbone': HybridParadigmBackbone,
 }

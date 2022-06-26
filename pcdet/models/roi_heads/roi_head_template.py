@@ -244,7 +244,10 @@ class RoIHeadTemplate(nn.Module):
         """
         code_size = self.box_coder.code_size
         # batch_cls_preds: (B, N, num_class or 1)
-        batch_cls_preds = cls_preds.view(batch_size, -1, cls_preds.shape[-1])
+        if cls_preds is None:
+            batch_cls_preds = None
+        else:
+            batch_cls_preds = cls_preds.view(batch_size, -1, cls_preds.shape[-1])
         batch_box_preds = box_preds.view(batch_size, -1, code_size)
 
         roi_ry = rois[:, :, 6].view(-1)

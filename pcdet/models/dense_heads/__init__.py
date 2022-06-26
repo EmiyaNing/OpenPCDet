@@ -14,6 +14,7 @@ from .diversity_distillation_headv2 import Diversity_HeadV2
 from .diversity_distillation_headv3 import Diversity_HeadV3
 from .IASSD_head import IASSD_Head
 from .anchor_head_harmony import AnchorHeadHarmony
+from .point_head_double import PointHeadDouble_Aux
 
 __all__ = {
     'AnchorHeadTemplate': AnchorHeadTemplate,
@@ -37,4 +38,5 @@ __all__ = {
     'IASSD_Head': IASSD_Head,
     'AnchorHeadHarmony': AnchorHeadHarmony,
     'Iou_Head': Iou_Head,
+    'PointHeadDouble_Aux': PointHeadDouble_Aux,
 }

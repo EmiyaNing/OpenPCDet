@@ -41,6 +41,23 @@ def points_in_boxes_gpu(points, boxes):
     return box_idxs_of_pts
 
 
+def points_in_multi_boxes_gpu(points, boxes, max_num_boxes):
+    """
+    :param points: (B, M, 3)
+    :param boxes: (B, T, 7), num_valid_boxes <= T
+    :param max_num_boxes: N
+    :return box_idxs_of_pts: (B, M, N), default background = -1
+    """
+    assert boxes.shape[0] == points.shape[0]
+    assert boxes.shape[2] == 7 and points.shape[2] == 3
+    batch_size, num_points, _ = points.shape
+
+    box_idxs_of_pts = points.new_zeros((batch_size, num_points, max_num_boxes), dtype=torch.int).fill_(-1)
+    roiaware_pool3d_cuda.points_in_multi_boxes_gpu(boxes.contiguous(), points.contiguous(), box_idxs_of_pts, max_num_boxes)
+
+    return box_idxs_of_pts
+
+
 class RoIAwarePool3d(nn.Module):
     def __init__(self, out_size, max_pts_each_voxel=128):
         super().__init__()

@@ -34,6 +34,22 @@ from .iou_detector.second_iou import IOU_SECONDNet
 from .self_sub_heads.voxel_subheadsv1 import Voxel_SubHeads
 from .self_sub_heads.voxel_subheadsv2 import Voxel_SubHeadsv2
 from .self_sub_heads.voxel_subheadsv3 import Voxel_DESubHeads
+from .self_sub_heads.voxel_subheadsv4 import Voxel_PASubHeads
+from .self_sub_heads.voxel_subhead_se import Voxel_SESubHeads
+from .self_sub_heads.voxel_subhead_simple import Voxel_BTSubHeads
+from .self_sub_heads.voxel_subhead_simplev2 import Voxel_BTSubHeadsv2
+from .self_sub_heads.voxel_subhead_batch import Voxel_PerSubHeadsv2
+from .self_sub_heads.voxel_subhead_batchv2 import Voxel_PerSubHeadsv3
+from .self_sub_heads.voxel_subhead_batchv3 import Voxel_PerSubHeadsv4
+from .self_sub_heads.voxel_subhead_target import Voxel_TASubHeads
+from .self_compent.voxel_debeta import Voxel_DEBETA
+from .self_compent.voxel_verfy_debeta import Voxel_VDEBETA
+from .self_compent.voxel_simple_f import Voxel_SubHeadsF
+from .self_compent.voxel_simple import Voxel_Simple
+from .self_compent.voxel_siou import Voxel_Siou
+from .self_compent.voxel_sfeat import Voxel_Feat
+from .self_compent.voxel_sort import Voxel_Sort
+from .sienet import SIENet
 
 __all__ = {
     'Detector3DTemplate': Detector3DTemplate,
@@ -74,6 +90,22 @@ __all__ = {
     'Voxel_SubHeads': Voxel_SubHeads,
     'Voxel_SubHeadsv2': Voxel_SubHeadsv2,
     'Voxel_DESubHeads': Voxel_DESubHeads,
+    'SIENet': SIENet,
+    'Voxel_PASubHeads': Voxel_PASubHeads,
+    'Voxel_SESubHeads': Voxel_SESubHeads,
+    'Voxel_BTSubHeads': Voxel_BTSubHeads,
+    'Voxel_BTSubHeadsv2': Voxel_BTSubHeadsv2,
+    'Voxel_PerSubHeadsv2': Voxel_PerSubHeadsv2,
+    'Voxel_PerSubHeadsv3': Voxel_PerSubHeadsv3,
+    'Voxel_PerSubHeadsv4': Voxel_PerSubHeadsv4,
+    'Voxel_TASubHeads': Voxel_TASubHeads,
+    'Voxel_DEBETA': Voxel_DEBETA,
+    'Voxel_VDEBETA': Voxel_VDEBETA,
+    'Voxel_SubHeadsF': Voxel_SubHeadsF,
+    'Voxel_Simple': Voxel_Simple,
+    'Voxel_Siou': Voxel_Siou,
+    'Voxel_Feat': Voxel_Feat,
+    'Voxel_Sort': Voxel_Sort,
 }
 
 

@@ -173,7 +173,7 @@ class Voxel_DESubHeads(Detector3DTemplate):
             return ret_dict, tb_dict, disp_dict
         else:
             batch_dict = self.dense_head(batch_dict)
-            batch_dict = self.roi_head(batch_dict)
+            #batch_dict = self.roi_head(batch_dict)
             pred_dicts, recall_dicts = self.post_processing(batch_dict)
             return pred_dicts, recall_dicts
 
@@ -261,7 +261,8 @@ class Voxel_DESubHeads(Detector3DTemplate):
         stage_two_cls = F.sigmoid(self.forward_ret_dict['main_stage_two_cls'])
         stage_two_box = self.forward_ret_dict['main_stage_two_box']
         stage_two_label = self.forward_ret_dict['main_stage_two_labels']
-        batch_sz = stage_one_box.shape[0]
+        batch_sz    = stage_one_box.shape[0]
+        cur_epoch   = self.forward_ret_dict['cur_epoch']
 
 
         linear_rise_weight = 0.001 * (epoch / total_epoch)
@@ -269,8 +270,12 @@ class Voxel_DESubHeads(Detector3DTemplate):
         # filter once by confidence
         one_confidence, _ = torch.max(stage_one_cls, dim=-1)
         two_confidence, _ = torch.max(stage_two_cls, dim=-1)
-        one_mask = one_confidence > 0.1
-        two_mask = two_confidence > 0.1
+
+        process    = (cur_epoch / total_epoch)
+        con_thresh = process if process < 0.1 else 0.1
+
+        one_mask = one_confidence > con_thresh
+        two_mask = two_confidence > con_thresh
         stage_one_cls, stage_one_box = stage_one_cls[one_mask], stage_one_box[one_mask]
         if stage_one_cls.shape == 0:
             tb_dict = {
@@ -303,7 +308,7 @@ class Voxel_DESubHeads(Detector3DTemplate):
             MATCHED_DISTANCE = 1
             matched_student_mask = (student_dist_of_teacher < MATCHED_DISTANCE).float().unsqueeze(-1) # [Nt, 1]
 
-        matched_student_cls_preds = stage_one_cls[student_index_of_teacher]
+        matched_student_cls_preds = stage_one_cls[student_index_of_teacher] # duiqi shape with teacher
 
         # Get target class score of student predictions.
         pt_stu, pnt_stu  = matched_student_cls_preds[one_hot_targets].unsqueeze(-1), matched_student_cls_preds[one_hot_targets.logical_not()]
@@ -312,8 +317,7 @@ class Voxel_DESubHeads(Detector3DTemplate):
         tckd_loss = tckd_loss / (num_teacher_box * batch_sz)
 
 
-        #cls_loss = self.distill_cost_function(matched_student_cls_preds.log(), one_hot_targets)
-        #cls_loss = (cls_loss * matched_student_mask).sum() / (num_teacher_box * batch_sz)
+
         self.main_consistency_meter.update(tckd_loss.item())
         tb_dict = {
             'Self-kd-main-cls-loss': tckd_loss.item(),

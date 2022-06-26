@@ -1,0 +1,11 @@
+# ninja log v5
+1	10282	1652688598323858256	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/group_points_gpu.o	6071188c56f13f17
+0	10409	1652688598451854387	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/ball_query_gpu.o	32a43fd26bf8c912
+1	10426	1652688598467853904	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/interpolate_gpu.o	e655a102f5e31cf8
+2	11348	1652688599391825979	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/sampling_gpu.o	43f9f8396c776e3a
+0	17018	1652688605051655131	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/pointnet2_api.o	d8ef2fa028bc724d
+2	4512	1652689172191827624	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/sampling.o	543f87c105284220
+2	4526	1652689172203827308	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/interpolate.o	2ce3269ef4d2e147
+1	4534	1652689172211827098	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/group_points.o	d9eca5c5f635cee9
+2	4329	1652689384442017397	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/sampling.o	543f87c105284220
+1	4638	1652689384750008880	/home/godning/project/pytorch/OpenPCDet/pcdet/ops/pointnet2_lib/pointnet2_fast/build/temp.linux-x86_64-3.7/src/ball_query.o	73a40aa60017a847

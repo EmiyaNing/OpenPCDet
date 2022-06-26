@@ -341,9 +341,9 @@ class KD_AnchorHeadSingle(AnchorHeadTemplate):
             self.forward_ret_dict['student_reg_temp'] = reg_temp
             self.knowledge_forward_rect.update(teacher_dict)
             self.knowledge_forward_rect['teacher_feature']  = data_dict['teacher_feature']
-            self.knowledge_forward_rect['teacher_cls_pred'] = data_dict['teacher_cls_preds'] 
-            self.knowledge_forward_rect['teacher_head_cls_temp'] = data_dict['teacher_head_cls']
-            self.knowledge_forward_rect['teacher_head_reg_temp'] = data_dict['teacher_head_reg']
+            self.knowledge_forward_rect['teacher_cls_pred'] = data_dict['teacher_cls_pred'] 
+            self.knowledge_forward_rect['teacher_head_cls_temp'] = data_dict['teacher_cls_feature']
+            self.knowledge_forward_rect['teacher_head_reg_temp'] = data_dict['teacher_reg_feature']
 
         if not self.training or self.predict_boxes_when_training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

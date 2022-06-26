@@ -26,6 +26,9 @@ void roiaware_pool3d_backward_launcher(int boxes_num, int out_x, int out_y, int 
 void points_in_boxes_launcher(int batch_size, int boxes_num, int pts_num, const float *boxes,
     const float *pts, int *box_idx_of_points);
 
+void points_in_multi_boxes_launcher(int batch_size, int boxes_num, int pts_num, const float *boxes,
+    const float *pts, int *box_idx_of_points, int max_num_boxes);
+
 int roiaware_pool3d_gpu(at::Tensor rois, at::Tensor pts, at::Tensor pts_feature, at::Tensor argmax,
     at::Tensor pts_idx_of_voxels, at::Tensor pooled_features, int pool_method){
     // params rois: (N, 7) [x, y, z, dx, dy, dz, heading] (x, y, z) is the box center
@@ -118,6 +121,30 @@ int points_in_boxes_gpu(at::Tensor boxes_tensor, at::Tensor pts_tensor, at::Tens
 }
 
 
+int points_in_multi_boxes_gpu(at::Tensor boxes_tensor, at::Tensor pts_tensor, at::Tensor box_idx_of_points_tensor, int max_num_boxes){
+    // params boxes: (B, N, 7) [x, y, z, dx, dy, dz, heading] (x, y, z) is the box center
+    // params pts: (B, npoints, 3) [x, y, z]
+    // params boxes_idx_of_points: (B, npoints), default -1
+    // params max_num_boxes
+
+//    CHECK_INPUT(boxes_tensor);
+//    CHECK_INPUT(pts_tensor);
+//    CHECK_INPUT(box_idx_of_points_tensor);
+
+    int batch_size = boxes_tensor.size(0);
+    int boxes_num = boxes_tensor.size(1);
+    int pts_num = pts_tensor.size(1);
+
+    const float *boxes = boxes_tensor.data<float>();
+    const float *pts = pts_tensor.data<float>();
+    int *box_idx_of_points = box_idx_of_points_tensor.data<int>();
+
+    points_in_multi_boxes_launcher(batch_size, boxes_num, pts_num, boxes, pts, box_idx_of_points, max_num_boxes);
+
+    return 1;
+}
+
+
 inline void lidar_to_local_coords_cpu(float shift_x, float shift_y, float rot_angle, float &local_x, float &local_y){
     float cosa = cos(-rot_angle), sina = sin(-rot_angle);
     local_x = shift_x * cosa + shift_y * (-sina);
@@ -173,5 +200,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &roiaware_pool3d_gpu, "roiaware pool3d forward (CUDA)");
     m.def("backward", &roiaware_pool3d_gpu_backward, "roiaware pool3d backward (CUDA)");
     m.def("points_in_boxes_gpu", &points_in_boxes_gpu, "points_in_boxes_gpu forward (CUDA)");
+    m.def("points_in_multi_boxes_gpu", &points_in_multi_boxes_gpu, "points_in_multi_boxes_gpu forward (CUDA)");
     m.def("points_in_boxes_cpu", &points_in_boxes_cpu, "points_in_boxes_cpu forward (CUDA)");
 }

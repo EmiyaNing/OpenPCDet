@@ -357,3 +357,56 @@ void points_in_boxes_launcher(int batch_size, int boxes_num, int pts_num, const 
     cudaDeviceSynchronize();  // for using printf in kernel function
 #endif
 }
+
+
+__global__ void points_in_multi_boxes_kernel(int batch_size, int boxes_num, int pts_num, const float *boxes,
+    const float *pts, int *box_idx_of_points, int max_num_boxes){
+    // params boxes: (B, N, 7) [x, y, z, dx, dy, dz, heading] (x, y, z) is the box center
+    // params pts: (B, npoints, 3) [x, y, z] in LiDAR coordinate
+    // params boxes_idx_of_points: (B, npoints, max_num_boxes), default -1
+
+    int bs_idx = blockIdx.y;
+    int pt_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (bs_idx >= batch_size || pt_idx >= pts_num) return;
+
+    boxes += bs_idx * boxes_num * 7;
+    pts += bs_idx * pts_num * 3 + pt_idx * 3;
+    box_idx_of_points += bs_idx * pts_num * max_num_boxes + pt_idx * max_num_boxes;
+
+    float local_x = 0, local_y = 0;
+    int cur_in_flag = 0;
+    int box_num_of_points = 0;
+    for (int k = 0; k < boxes_num; k++){
+        cur_in_flag = check_pt_in_box3d(pts, boxes + k * 7, local_x, local_y);
+        if (cur_in_flag){
+            box_idx_of_points[box_num_of_points] = k;
+            box_num_of_points++;
+            if (box_num_of_points >= max_num_boxes) {
+                break;
+            }
+        }
+    }
+}
+
+
+void points_in_multi_boxes_launcher(int batch_size, int boxes_num, int pts_num, const float *boxes,
+    const float *pts, int *box_idx_of_points, int max_num_boxes){
+    // params boxes: (B, N, 7) [x, y, z, dx, dy, dz, heading] (x, y, z) is the box center
+    // params pts: (B, npoints, 3) [x, y, z]
+    // params boxes_idx_of_points: (B, npoints, max_num_boxes), default -1
+    cudaError_t err;
+
+    dim3 blocks(DIVUP(pts_num, THREADS_PER_BLOCK), batch_size);
+    dim3 threads(THREADS_PER_BLOCK);
+    points_in_multi_boxes_kernel<<<blocks, threads>>>(batch_size, boxes_num, pts_num, boxes, pts, box_idx_of_points, max_num_boxes);
+
+    err = cudaGetLastError();
+    if (cudaSuccess != err) {
+        fprintf(stderr, "CUDA kernel failed : %s\n", cudaGetErrorString(err));
+        exit(-1);
+    }
+
+#ifdef DEBUG
+    cudaDeviceSynchronize();  // for using printf in kernel function
+#endif
+}

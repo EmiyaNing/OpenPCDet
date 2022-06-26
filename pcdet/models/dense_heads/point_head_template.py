@@ -190,6 +190,42 @@ class PointHeadTemplate(nn.Module):
         tb_dict.update({'point_loss_box': point_loss_box.item()})
         return point_loss_box, tb_dict
 
+    def get_aux_cls_layer_loss(self):
+        point_cls_labels = self.forward_ret_dict['aux_cls_labels'].view(-1)
+        point_cls_preds = self.forward_ret_dict['aux_cls_preds'].view(-1, self.num_class)
+
+        positives = (point_cls_labels > 0)
+        negative_cls_weights = (point_cls_labels == 0) * 1.0
+        cls_weights = (negative_cls_weights + 1.0 * positives).float()
+        pos_normalizer = positives.sum(dim=0).float()
+        cls_weights /= torch.clamp(pos_normalizer, min=1.0)
+
+        one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1)
+        one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)
+        one_hot_targets = one_hot_targets[..., 1:]
+        cls_loss_src = self.cls_loss_func(point_cls_preds, one_hot_targets, weights=cls_weights)
+        point_loss_cls = cls_loss_src.sum()
+
+        loss_weights_dict = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS
+        point_loss_cls = point_loss_cls * loss_weights_dict['aux_cls_weight']
+        tb_dict = {
+            'aux_loss_cls': point_loss_cls.item(),
+            'aux_point_pos_num': pos_normalizer.item()
+        }
+        return point_loss_cls, tb_dict
+
+    def get_aux_part_layer_loss(self):
+        pos_mask = self.forward_ret_dict['aux_cls_labels'] > 0
+        pos_normalizer = max(1, (pos_mask > 0).sum().item())
+        point_part_labels = self.forward_ret_dict['aux_part_labels']
+        point_part_preds = self.forward_ret_dict['aux_part_preds']
+        point_loss_part = F.binary_cross_entropy(torch.sigmoid(point_part_preds), point_part_labels, reduction='none')
+        point_loss_part = (point_loss_part.sum(dim=-1) * pos_mask.float()).sum() / (3 * pos_normalizer)
+
+        loss_weights_dict = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS
+        point_loss_part = point_loss_part * loss_weights_dict['aux_part_weight']
+        return point_loss_part, {'aux_loss_part': point_loss_part.item()}
+
     def generate_predicted_boxes(self, points, point_cls_preds, point_box_preds):
         """
         Args:

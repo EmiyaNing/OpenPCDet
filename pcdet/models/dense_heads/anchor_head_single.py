@@ -50,11 +50,13 @@ class AnchorHeadSingle(AnchorHeadTemplate):
 
         self.forward_ret_dict['cls_preds'] = cls_preds
         self.forward_ret_dict['box_preds'] = box_preds
+        data_dict['box_preds'] = box_preds
 
         if self.conv_dir_cls is not None:
             dir_cls_preds = self.conv_dir_cls(spatial_features_2d)
             dir_cls_preds = dir_cls_preds.permute(0, 2, 3, 1).contiguous()
             self.forward_ret_dict['dir_cls_preds'] = dir_cls_preds
+            data_dict['dir_preds'] = dir_cls_preds
         else:
             dir_cls_preds = None
 

@@ -189,51 +189,8 @@ class CT3DHead(RoIHeadTemplate):
         else:
             targets_dict['rcnn_cls'] = rcnn_cls
             targets_dict['rcnn_reg'] = rcnn_reg
+            batch_dict['rcnn_cls'] = rcnn_cls
+            batch_dict['rcnn_reg'] = rcnn_reg
             self.forward_ret_dict = targets_dict
 
         return batch_dict
-
-    def get_box_cls_layer_loss(self, forward_ret_dict):
-        loss_cfgs = self.model_cfg.LOSS_CONFIG
-        rcnn_cls = forward_ret_dict['rcnn_cls']
-        rcnn_cls_labels = forward_ret_dict['rcnn_cls_labels'].view(-1)
-        if self.model_cfg.CLASS_AGNOSTIC:
-            if loss_cfgs.CLS_LOSS == 'BinaryCrossEntropy':
-                rcnn_cls_flat = rcnn_cls.view(-1, self.num_class)
-                batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), rcnn_cls_labels.float(), reduction='none')
-                cls_valid_mask = (rcnn_cls_labels >= 0).float()
-                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
-            elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
-                batch_loss_cls = F.cross_entropy(rcnn_cls, rcnn_cls_labels, reduction='none', ignore_index=-1)
-                cls_valid_mask = (rcnn_cls_labels >= 0).float()
-                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
-            else:
-                raise NotImplementedError
-
-            rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
-            tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
-            return rcnn_loss_cls, tb_dict
-        else:
-            gt_cls_of_rois = forward_ret_dict['gt_cls_of_rois'].view(-1)
-            one_hot_target = torch.zeros(
-                [rcnn_cls_labels.shape[0], self.num_class + 1], dtype=rcnn_cls_labels.dtype, device=rcnn_cls_labels.device
-            )
-            one_hot_target.scatter_(-1, gt_cls_of_rois.unsqueeze(-1).long(), rcnn_cls_labels.unsqueeze(-1))
-            one_hot_target = one_hot_target[:, 1:]
-            zero_mask      = one_hot_target == 0
-            one_hot_target[zero_mask] = 0.00001
-            if loss_cfgs.CLS_LOSS == 'BinaryCrossEntropy':
-                rcnn_cls_flat = rcnn_cls.view(-1, self.num_class)
-                batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), one_hot_target.float(), reduction='none')
-                cls_valid_mask = (rcnn_cls_labels >= 0).float()
-                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask.unsqueeze(-1)).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
-            elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
-                batch_loss_cls = F.cross_entropy(rcnn_cls, one_hot_target, reduction='none', ignore_index=-1)
-                cls_valid_mask = (rcnn_cls_labels >= 0).float()
-                rcnn_loss_cls = (batch_loss_cls * cls_valid_mask.unsqueeze(-1)).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
-            else:
-                raise NotImplementedError
-
-            rcnn_loss_cls = rcnn_loss_cls * loss_cfgs.LOSS_WEIGHTS['rcnn_cls_weight']
-            tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
-            return rcnn_loss_cls, tb_dict
